@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/ceci ./cmd/ceci"
+bin = "./tmp/ceci"
+full_bin = "./tmp/ceci"
+include_ext = ["go"]
+exclude_dir = ["tmp", "vendor"]
+delay = 200
+
+[log]
+time = false
