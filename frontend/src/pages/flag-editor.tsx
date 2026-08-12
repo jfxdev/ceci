@@ -13,6 +13,9 @@ import { api, ApiError } from "@/lib/api"
 const OPERATORS = ["==", "!=", ">", "<", "in", "contains"] as const
 type Operator = (typeof OPERATORS)[number]
 
+const COMBINATORS = ["and", "or"] as const
+type Combinator = (typeof COMBINATORS)[number]
+
 interface VariantRow {
   key: string
   value: string
@@ -23,12 +26,17 @@ interface RolloutBucket {
   percentage: string
 }
 
-interface RuleRow {
-  priority: number
-  description: string
+interface ConditionRow {
   attribute: string
   operator: Operator
   value: string
+}
+
+interface RuleRow {
+  priority: number
+  description: string
+  combinator: Combinator
+  conditions: ConditionRow[]
   variantKey: string
   rollout: RolloutBucket[]
 }
@@ -55,8 +63,8 @@ function stringifyVariantValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value)
 }
 
-/** Reconstructs {attribute, operator, value} from a simple JSONLogic condition, falling back to a pass-through "always match" for anything more complex than this editor supports. */
-function conditionToRule(condition: unknown): { attribute: string; operator: Operator; value: string } {
+/** Reconstructs a single {attribute, operator, value} leaf from a JSONLogic comparison node. */
+function conditionToLeaf(condition: unknown): ConditionRow {
   if (condition && typeof condition === "object") {
     for (const op of OPERATORS) {
       const args = (condition as Record<string, unknown>)[op]
@@ -71,9 +79,34 @@ function conditionToRule(condition: unknown): { attribute: string; operator: Ope
   return { attribute: "", operator: "==", value: "" }
 }
 
+/**
+ * Reconstructs {combinator, conditions[]} from a JSONLogic condition. Supports a single
+ * leaf comparison, or a top-level and/or of leaf comparisons — anything nested deeper
+ * (e.g. and-of-or) falls back to a single blank leaf, since this editor only exposes one
+ * combinator level.
+ */
+function conditionToRule(condition: unknown): { combinator: Combinator; conditions: ConditionRow[] } {
+  if (condition && typeof condition === "object") {
+    for (const combinator of COMBINATORS) {
+      const args = (condition as Record<string, unknown>)[combinator]
+      if (Array.isArray(args) && args.length > 0) {
+        return { combinator, conditions: args.map(conditionToLeaf) }
+      }
+    }
+  }
+  return { combinator: "and", conditions: [conditionToLeaf(condition)] }
+}
+
+function leafToCondition(leaf: ConditionRow): unknown {
+  const value: unknown = leaf.operator === "in" ? leaf.value.split(",").map((s) => s.trim()) : leaf.value
+  return { [leaf.operator]: [{ var: leaf.attribute }, value] }
+}
+
 function ruleToCondition(rule: RuleRow): unknown {
-  const value: unknown = rule.operator === "in" ? rule.value.split(",").map((s) => s.trim()) : rule.value
-  return { [rule.operator]: [{ var: rule.attribute }, value] }
+  if (rule.conditions.length <= 1) {
+    return leafToCondition(rule.conditions[0] ?? { attribute: "", operator: "==", value: "" })
+  }
+  return { [rule.combinator]: rule.conditions.map(leafToCondition) }
 }
 
 export function FlagEditorPage() {
@@ -104,14 +137,14 @@ export function FlagEditorPage() {
       [...flag.rules]
         .sort((a, b) => a.priority - b.priority)
         .map((r) => {
-          const { attribute, operator, value } = conditionToRule(r.condition)
+          const { combinator, conditions } = conditionToRule(r.condition)
           const rollout = Array.isArray(r.rollout)
             ? (r.rollout as { variant: string; percentage: number }[]).map((b) => ({
                 variant: b.variant,
                 percentage: String(b.percentage),
               }))
             : []
-          return { priority: r.priority, description: r.description, attribute, operator, value, variantKey: r.variantKey, rollout }
+          return { priority: r.priority, description: r.description, combinator, conditions, variantKey: r.variantKey, rollout }
         }),
     )
   }, [flag])
@@ -155,7 +188,14 @@ export function FlagEditorPage() {
   function addRule() {
     setRules((prev) => [
       ...prev,
-      { priority: prev.length + 1, description: "", attribute: "", operator: "==", value: "", variantKey: defaultVariant, rollout: [] },
+      {
+        priority: prev.length + 1,
+        description: "",
+        combinator: "and",
+        conditions: [{ attribute: "", operator: "==", value: "" }],
+        variantKey: defaultVariant,
+        rollout: [],
+      },
     ])
   }
 
@@ -165,6 +205,30 @@ export function FlagEditorPage() {
 
   function removeRule(i: number) {
     setRules((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  function addCondition(ruleIndex: number) {
+    setRules((prev) =>
+      prev.map((r, idx) =>
+        idx === ruleIndex ? { ...r, conditions: [...r.conditions, { attribute: "", operator: "==", value: "" }] } : r,
+      ),
+    )
+  }
+
+  function updateCondition(ruleIndex: number, condIndex: number, patch: Partial<ConditionRow>) {
+    setRules((prev) =>
+      prev.map((r, idx) =>
+        idx === ruleIndex
+          ? { ...r, conditions: r.conditions.map((c, ci) => (ci === condIndex ? { ...c, ...patch } : c)) }
+          : r,
+      ),
+    )
+  }
+
+  function removeCondition(ruleIndex: number, condIndex: number) {
+    setRules((prev) =>
+      prev.map((r, idx) => (idx === ruleIndex ? { ...r, conditions: r.conditions.filter((_, ci) => ci !== condIndex) } : r)),
+    )
   }
 
   function addRolloutBucket(ruleIndex: number) {
@@ -285,27 +349,10 @@ export function FlagEditorPage() {
                     title="Priority (lower evaluated first)"
                   />
                   <Input
-                    placeholder="attribute (e.g. plan)"
-                    value={r.attribute}
-                    onChange={(e) => updateRule(i, { attribute: e.target.value })}
-                    className="w-40"
-                  />
-                  <Select value={r.operator} onValueChange={(v) => updateRule(i, { operator: v as Operator })}>
-                    <SelectTrigger className="w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {OPERATORS.map((op) => (
-                        <SelectItem key={op} value={op}>
-                          {op}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    placeholder="value (comma-separated for 'in')"
-                    value={r.value}
-                    onChange={(e) => updateRule(i, { value: e.target.value })}
+                    placeholder="rule description"
+                    value={r.description}
+                    onChange={(e) => updateRule(i, { description: e.target.value })}
+                    className="flex-1"
                   />
                   <Select value={r.variantKey} onValueChange={(v) => updateRule(i, { variantKey: v })}>
                     <SelectTrigger className="w-32">
@@ -322,6 +369,70 @@ export function FlagEditorPage() {
                   <Button type="button" variant="ghost" size="sm" onClick={() => removeRule(i)}>
                     Remove rule
                   </Button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-muted-foreground">Conditions (all must reference the evaluation context)</Label>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => addCondition(i)}>
+                      Add condition
+                    </Button>
+                  </div>
+                  {r.conditions.map((c, ci) => (
+                    <div key={ci} className="flex items-center gap-2">
+                      {ci === 0 ? (
+                        <span className="w-16 text-xs text-muted-foreground">where</span>
+                      ) : (
+                        <Select
+                          value={r.combinator}
+                          onValueChange={(v) => updateRule(i, { combinator: v as Combinator })}
+                        >
+                          <SelectTrigger className="w-16">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COMBINATORS.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Input
+                        placeholder="attribute (e.g. plan)"
+                        value={c.attribute}
+                        onChange={(e) => updateCondition(i, ci, { attribute: e.target.value })}
+                        className="w-40"
+                      />
+                      <Select value={c.operator} onValueChange={(v) => updateCondition(i, ci, { operator: v as Operator })}>
+                        <SelectTrigger className="w-28">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {OPERATORS.map((op) => (
+                            <SelectItem key={op} value={op}>
+                              {op}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder="value (comma-separated for 'in')"
+                        value={c.value}
+                        onChange={(e) => updateCondition(i, ci, { value: e.target.value })}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeCondition(i, ci)}
+                        disabled={r.conditions.length <= 1}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
                 </div>
 
                 <Separator />

@@ -13,17 +13,17 @@ Status atual: auth, projects, parameters (KV hierárquico+versionado), feature f
 - [x] **Repo inicializado e no GitHub** — commit inicial em `repo-init`, branch `main` criado, PR draft #1 aberto (`repo-init` → `main`). `.env`/`node_modules`/`coverage` de fora do versionamento.
 - [x] **Registro de usuário** — `POST /api/v1/auth/register` (o `AuthService.Register` já existia, faltava só a rota + wiring). Retorna 409 (`ErrEmailTaken`) em email duplicado, auto-login na conta recém-criada. Página `/register` no frontend, link cruzado com `/login`. Testado via curl e end-to-end em browser real.
 - [x] **Members UI completa** — role do membro agora é um `Select` inline (dispara `PATCH` ao trocar) e apareceu botão "Remove" com `ConfirmDialog` (dispara `DELETE`). Validado em browser real: trocar viewer→editor refletiu no banco e na tela; remover tirou da listagem.
+- [x] **FlagEditor: AND/OR na UI** — rule agora tem lista de condições (`ConditionRow[]`) + um combinator (`and`/`or`) aplicado entre elas, com `conditionToRule`/`ruleToCondition` reescritos pra ler/serializar esse shape. Suporta um nível de combinator (n condições, todas and OU todas or) — nesting mais profundo (ex.: `and` contendo `or`) continua colapsando pra uma condição em branco ao carregar no editor (fallback documentado, não é bug). Validado round-trip completo em browser real contra Postgres: leu uma flag com `and`-de-`or` seedada via API (2ª condição colapsou como esperado), editou pra `and` de 2 leaves, salvou, confirmou JSON persistido, trocou combinator pra `or`, salvou de novo, confirmou.
+- [x] **CLAUDE.md** — criado na raiz via skill `init`, cobre comandos (`make dev/test/build`, rodar teste único), arquitetura backend (layering, padrão de interface local por route file, sqlite in-memory nos testes de repository, condition tree JSONLogic opaco) e frontend (estrutura de pages/lib/components, limitação do FlagEditor documentada acima, quirk do Radix Select com `key`), convenções de teste, e o bug conhecido da ferramenta de browser automation com Radix.
 
 ## Alta prioridade
 1. **Audit log de flags** — `parameters` já tem `ParameterVersion` (histórico completo, append-only). `feature_flags`/`flag_rules`/`flag_variants` não têm nada — mudança de rule/variant não fica rastreada. Copiar o mesmo padrão (`FlagAudit` ou `FlagVersion`).
 
 ## Média prioridade
 2. **Dockerfile produção nunca testado de verdade** — só validei o binário local (`make build`) servindo frontend embutido. Falta rodar `make docker-build` e subir o container real de ponta a ponta.
-3. **FlagEditor: condição só suporta single attr/op/value na UI** — AND/OR aninhado só dá pra configurar via API direto (evaluator já suporta). Documentar essa limitação pro usuário final, ou expandir a UI se for necessário no dia a dia.
 
 ## Baixa prioridade
-4. **Rate limiting só no `/auth/login`** (e agora `/auth/register`) — dá pra estender pra outras rotas sensíveis (criação de project/api-key/member) se abuso virar problema real. Adiado a pedido do usuário.
-5. **CLAUDE.md** do projeto pra onboarding de outros devs/agentes (README.md raiz já existe e cobre stack+dev setup).
+3. **Rate limiting só no `/auth/login`** (e agora `/auth/register`) — dá pra estender pra outras rotas sensíveis (criação de project/api-key/member) se abuso virar problema real. Adiado a pedido do usuário.
 
 ## Notas técnicas pra quem pegar isso depois
 - Login seed: `admin@ceci.local` / `admin123` (via `make seed`, idempotente)
