@@ -9,21 +9,21 @@ Status atual: auth, projects, parameters (KV hierárquico+versionado), feature f
 - [x] FlagEditor completo: kill switch, variants, targeting rules (attr/op/value), rollout %
 - [x] Bug conhecido do FlagEditor corrigido: Select do shadcn ficava em branco no "Default variant" ao editar flag existente (Radix só registra label do item quando ele monta — corrigido com `key` forçando remount quando dados chegam)
 
-## Urgente
-0. **Repo sem nenhum commit ainda** — `git log` vazio, tudo untracked. Fazer primeiro commit antes de qualquer outra coisa (checar `.env` não vai junto — já tem `.gitignore`, confirmar que cobre `.env`).
+## Feito nesta sessão
+- [x] **Repo inicializado e no GitHub** — commit inicial em `repo-init`, branch `main` criado, PR draft #1 aberto (`repo-init` → `main`). `.env`/`node_modules`/`coverage` de fora do versionamento.
+- [x] **Registro de usuário** — `POST /api/v1/auth/register` (o `AuthService.Register` já existia, faltava só a rota + wiring). Retorna 409 (`ErrEmailTaken`) em email duplicado, auto-login na conta recém-criada. Página `/register` no frontend, link cruzado com `/login`. Testado via curl e end-to-end em browser real.
+- [x] **Members UI completa** — role do membro agora é um `Select` inline (dispara `PATCH` ao trocar) e apareceu botão "Remove" com `ConfirmDialog` (dispara `DELETE`). Validado em browser real: trocar viewer→editor refletiu no banco e na tela; remover tirou da listagem.
 
 ## Alta prioridade
-1. **Registro de usuário** — hoje só existe `make seed` (1 admin fixo). Sem tela nem rota de signup. Confirmado: não existe `POST /api/v1/auth/register` em `auth_routes.go`. Se precisar múltiplos usuários reais, falta esse endpoint (ou fluxo de admin convidar via UI/email).
-2. **Audit log de flags** — `parameters` já tem `ParameterVersion` (histórico completo, append-only). `feature_flags`/`flag_rules`/`flag_variants` não têm nada — mudança de rule/variant não fica rastreada. Copiar o mesmo padrão (`FlagAudit` ou `FlagVersion`).
+1. **Audit log de flags** — `parameters` já tem `ParameterVersion` (histórico completo, append-only). `feature_flags`/`flag_rules`/`flag_variants` não têm nada — mudança de rule/variant não fica rastreada. Copiar o mesmo padrão (`FlagAudit` ou `FlagVersion`).
 
 ## Média prioridade
-3. **Members UI incompleta** — falta editar role de membro existente e remover membro (rotas do backend já existem: `PATCH`/`DELETE /projects/:id/members/:userId`, só falta botão na página).
-4. **Dockerfile produção nunca testado de verdade** — só validei o binário local (`make build`) servindo frontend embutido. Falta rodar `make docker-build` e subir o container real de ponta a ponta.
-5. **FlagEditor: condição só suporta single attr/op/value na UI** — AND/OR aninhado só dá pra configurar via API direto (evaluator já suporta). Documentar essa limitação pro usuário final, ou expandir a UI se for necessário no dia a dia.
+2. **Dockerfile produção nunca testado de verdade** — só validei o binário local (`make build`) servindo frontend embutido. Falta rodar `make docker-build` e subir o container real de ponta a ponta.
+3. **FlagEditor: condição só suporta single attr/op/value na UI** — AND/OR aninhado só dá pra configurar via API direto (evaluator já suporta). Documentar essa limitação pro usuário final, ou expandir a UI se for necessário no dia a dia.
 
 ## Baixa prioridade
-6. **Rate limiting só no `/auth/login`** — dá pra estender pra outras rotas sensíveis (criação de project/api-key/member) se abuso virar problema real. Adiado a pedido do usuário.
-7. **CLAUDE.md** do projeto pra onboarding de outros devs/agentes (README.md raiz já existe e cobre stack+dev setup).
+4. **Rate limiting só no `/auth/login`** (e agora `/auth/register`) — dá pra estender pra outras rotas sensíveis (criação de project/api-key/member) se abuso virar problema real. Adiado a pedido do usuário.
+5. **CLAUDE.md** do projeto pra onboarding de outros devs/agentes (README.md raiz já existe e cobre stack+dev setup).
 
 ## Notas técnicas pra quem pegar isso depois
 - Login seed: `admin@ceci.local` / `admin123` (via `make seed`, idempotente)

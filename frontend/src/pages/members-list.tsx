@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { RoleBadge, type ProjectRole } from "@/components/shared/role-badge"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { api, ApiError } from "@/lib/api"
 
 interface Member {
@@ -26,6 +27,7 @@ export function MembersListPage() {
   const [email, setEmail] = useState("")
   const [role, setRole] = useState<ProjectRole>("viewer")
   const [error, setError] = useState<string | null>(null)
+  const [pendingRemove, setPendingRemove] = useState<Member | null>(null)
 
   const { data: members = [], isLoading } = useQuery({
     queryKey: ["members", projectId],
@@ -44,6 +46,20 @@ export function MembersListPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to add member"),
   })
 
+  const updateRole = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: ProjectRole }) =>
+      api.patch(`/projects/${projectId}/members/${userId}`, { role }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["members", projectId] }),
+  })
+
+  const removeMember = useMutation({
+    mutationFn: (userId: string) => api.delete(`/projects/${projectId}/members/${userId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members", projectId] })
+      setPendingRemove(null)
+    },
+  })
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
@@ -53,7 +69,35 @@ export function MembersListPage() {
   const columns: DataTableColumn<Member>[] = [
     { key: "name", header: "Name", render: (m) => m.name },
     { key: "email", header: "Email", render: (m) => m.email },
-    { key: "role", header: "Role", render: (m) => <RoleBadge role={m.role} /> },
+    {
+      key: "role",
+      header: "Role",
+      render: (m) => (
+        <Select value={m.role} onValueChange={(v) => updateRole.mutate({ userId: m.userId, role: v as ProjectRole })}>
+          <SelectTrigger className="w-28" onClick={(e) => e.stopPropagation()}>
+            <SelectValue>
+              <RoleBadge role={m.role} />
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {ROLES.map((r) => (
+              <SelectItem key={r} value={r}>
+                {r}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      render: (m) => (
+        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPendingRemove(m) }}>
+          Remove
+        </Button>
+      ),
+    },
   ]
 
   return (
@@ -100,6 +144,15 @@ export function MembersListPage() {
         </Dialog>
       </div>
       <DataTable columns={columns} rows={members} rowKey={(m) => m.userId} emptyMessage={isLoading ? "Loading..." : "No members yet"} />
+      <ConfirmDialog
+        open={!!pendingRemove}
+        onOpenChange={(v) => !v && setPendingRemove(null)}
+        title={`Remove "${pendingRemove?.name}"?`}
+        description="They will lose access to this project."
+        confirmLabel="Remove"
+        loading={removeMember.isPending}
+        onConfirm={() => pendingRemove && removeMember.mutate(pendingRemove.userId)}
+      />
     </div>
   )
 }

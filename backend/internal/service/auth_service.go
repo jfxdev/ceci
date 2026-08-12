@@ -24,6 +24,7 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidToken       = errors.New("invalid token")
+	ErrEmailTaken         = errors.New("email already registered")
 )
 
 type AuthService struct {
@@ -179,8 +180,14 @@ func (s *AuthService) Me(ctx context.Context, userID uuid.UUID) (*model.User, er
 	return s.users.FindByID(ctx, userID)
 }
 
-// Register creates a new user with a hashed password.
+// Register creates a new user with a hashed password. Returns ErrEmailTaken
+// if the email is already registered.
 func (s *AuthService) Register(ctx context.Context, email, password, name string) (*model.User, error) {
+	if _, err := s.users.FindByEmail(ctx, email); err == nil {
+		return nil, ErrEmailTaken
+	} else if !errors.Is(err, repository.ErrNotFound) {
+		return nil, err
+	}
 	hash, err := HashPassword(password)
 	if err != nil {
 		return nil, err

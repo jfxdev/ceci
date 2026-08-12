@@ -133,6 +133,18 @@ func TestAuthService_RegisterLoginRefreshLogout(t *testing.T) {
 	assert.Equal(t, "a@b.com", fetched.Email)
 }
 
+func TestAuthService_Register_EmailTaken(t *testing.T) {
+	repo := newFakeUserRepository()
+	auth := NewAuthService(repo, "test-secret")
+	ctx := context.Background()
+
+	_, err := auth.Register(ctx, "a@b.com", "s3cret!", "Ana")
+	require.NoError(t, err)
+
+	_, err = auth.Register(ctx, "a@b.com", "other!", "Ana2")
+	assert.ErrorIs(t, err, ErrEmailTaken)
+}
+
 func TestAuthService_ParseAccessToken_Invalid(t *testing.T) {
 	auth := NewAuthService(newFakeUserRepository(), "test-secret")
 	_, err := auth.ParseAccessToken("not-a-jwt")

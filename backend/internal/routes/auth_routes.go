@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ import (
 // an interface so route handlers can be tested with a fake implementation.
 type authService interface {
 	Login(ctx context.Context, email, password string) (accessToken, refreshToken string, user *model.User, err error)
+	Register(ctx context.Context, email, password, name string) (*model.User, error)
 	Refresh(ctx context.Context, rawRefresh string) (accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, rawRefresh string) error
 	Me(ctx context.Context, userID uuid.UUID) (*model.User, error)
@@ -44,6 +46,34 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 		}
 		setRefreshCookie(c, refreshToken)
 		c.JSON(http.StatusOK, dto.LoginResponse{
+			AccessToken: accessToken,
+			User:        dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name},
+		})
+	})
+
+	registerRateLimit := middleware.RateLimitPerIP(constants.LoginRateLimitPerMinute, constants.LoginRateLimitBurst)
+
+	rg.POST("/auth/register", registerRateLimit, func(c *gin.Context) {
+		var req dto.RegisterRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+			return
+		}
+		if _, err := auth.Register(c.Request.Context(), req.Email, req.Password, req.Name); err != nil {
+			if errors.Is(err, service.ErrEmailTaken) {
+				c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "email already registered"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to register"})
+			return
+		}
+		accessToken, refreshToken, user, err := auth.Login(c.Request.Context(), req.Email, req.Password)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to register"})
+			return
+		}
+		setRefreshCookie(c, refreshToken)
+		c.JSON(http.StatusCreated, dto.LoginResponse{
 			AccessToken: accessToken,
 			User:        dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name},
 		})

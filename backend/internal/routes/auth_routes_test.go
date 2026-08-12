@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"ceci/backend/internal/model"
+	"ceci/backend/internal/service"
 )
 
 type fakeAuthService struct {
@@ -21,6 +22,9 @@ type fakeAuthService struct {
 	loginRefreshToken string
 	loginUser         *model.User
 	loginErr          error
+
+	registerUser *model.User
+	registerErr  error
 
 	refreshAccessToken string
 	refreshNewToken     string
@@ -37,6 +41,10 @@ type fakeAuthService struct {
 
 func (f *fakeAuthService) Login(ctx context.Context, email, password string) (string, string, *model.User, error) {
 	return f.loginAccessToken, f.loginRefreshToken, f.loginUser, f.loginErr
+}
+
+func (f *fakeAuthService) Register(ctx context.Context, email, password, name string) (*model.User, error) {
+	return f.registerUser, f.registerErr
 }
 
 func (f *fakeAuthService) Refresh(ctx context.Context, rawRefresh string) (string, string, error) {
@@ -133,6 +141,52 @@ func TestMeRoute_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "a@b.com")
+}
+
+func TestRegisterRoute_Success(t *testing.T) {
+	userID := uuid.New()
+	fake := &fakeAuthService{
+		registerUser:      &model.User{ID: userID, Email: "new@b.com", Name: "New"},
+		loginAccessToken:  "access-token",
+		loginRefreshToken: "refresh-token",
+		loginUser:         &model.User{ID: userID, Email: "new@b.com", Name: "New"},
+	}
+	r := newTestRouter(fake)
+
+	body, _ := json.Marshal(map[string]string{"email": "new@b.com", "password": "supersecret", "name": "New"})
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	assert.Contains(t, w.Body.String(), "access-token")
+	assert.Contains(t, w.Header().Get("Set-Cookie"), "ceci_refresh=refresh-token")
+}
+
+func TestRegisterRoute_EmailTaken(t *testing.T) {
+	fake := &fakeAuthService{registerErr: service.ErrEmailTaken}
+	r := newTestRouter(fake)
+
+	body, _ := json.Marshal(map[string]string{"email": "dup@b.com", "password": "supersecret", "name": "Dup"})
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+}
+
+func TestRegisterRoute_BadRequest(t *testing.T) {
+	fake := &fakeAuthService{}
+	r := newTestRouter(fake)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestRefreshRoute_MissingCookie(t *testing.T) {

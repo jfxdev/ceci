@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/shared/app-layout"
 import { ProtectedRoute } from "@/components/shared/protected-route"
 import { AuthProvider } from "@/lib/auth"
 import { LoginPage } from "@/pages/login"
+import { RegisterPage } from "@/pages/register"
 import { ProjectListPage } from "@/pages/project-list"
 import { FlagsListPage } from "@/pages/flags-list"
 import { FlagEditorPage } from "@/pages/flag-editor"
@@ -23,6 +24,7 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppLayout />}>
                   <Route path="/projects" element={<ProjectListPage />} />

@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth"
 import { ApiError } from "@/lib/api"
 
-export function LoginPage() {
-  const { login } = useAuth()
+export function RegisterPage() {
+  const { register } = useAuth()
   const navigate = useNavigate()
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -20,10 +21,10 @@ export function LoginPage() {
     setError(null)
     setLoading(true)
     try {
-      await login(email, password)
+      await register(email, password, name)
       navigate("/projects")
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed")
+      setError(err instanceof ApiError ? err.message : "Registration failed")
     } finally {
       setLoading(false)
     }
@@ -33,10 +34,14 @@ export function LoginPage() {
     <div className="flex min-h-svh items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Sign in to ceci</CardTitle>
+          <CardTitle>Create your ceci account</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -46,6 +51,7 @@ export function LoginPage() {
               <Input
                 id="password"
                 type="password"
+                minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -53,12 +59,12 @@ export function LoginPage() {
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? "Creating account..." : "Create account"}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link to="/register" className="underline">
-                Create one
+              Already have an account?{" "}
+              <Link to="/login" className="underline">
+                Sign in
               </Link>
             </p>
           </form>
