@@ -8,13 +8,13 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/model"
 )
 
 type APIKeyRepository interface {
 	Create(ctx context.Context, key *model.ProjectAPIKey) error
 	FindActiveByHash(ctx context.Context, keyHash string) (*model.ProjectAPIKey, error)
-	List(ctx context.Context, projectID uuid.UUID) ([]model.ProjectAPIKey, error)
+	List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.ProjectAPIKey, error)
 	Revoke(ctx context.Context, id uuid.UUID) error
 }
 
@@ -44,9 +44,9 @@ func (r *postgresAPIKeyRepository) FindActiveByHash(ctx context.Context, keyHash
 	return &k, nil
 }
 
-func (r *postgresAPIKeyRepository) List(ctx context.Context, projectID uuid.UUID) ([]model.ProjectAPIKey, error) {
+func (r *postgresAPIKeyRepository) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.ProjectAPIKey, error) {
 	var keys []model.ProjectAPIKey
-	err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Order("created_at desc").Find(&keys).Error
+	err := r.db.WithContext(ctx).Where("project_id = ? AND environment_id = ?", projectID, environmentID).Order("created_at desc").Find(&keys).Error
 	return keys, err
 }
 

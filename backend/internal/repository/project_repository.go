@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
 )
 
 type ProjectRepository interface {

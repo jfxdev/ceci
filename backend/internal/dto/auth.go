@@ -12,14 +12,15 @@ type RegisterRequest struct {
 }
 
 type LoginResponse struct {
-	AccessToken string    `json:"accessToken"`
-	User        UserDTO   `json:"user"`
+	AccessToken string  `json:"accessToken"`
+	User        UserDTO `json:"user"`
 }
 
 type UserDTO struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	ID      string `json:"id"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	IsAdmin bool   `json:"isAdmin"`
 }
 
 type ErrorResponse struct {

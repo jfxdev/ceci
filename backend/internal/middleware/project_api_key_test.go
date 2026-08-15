@@ -12,12 +12,13 @@ import (
 )
 
 type fakeProjectKeyResolver struct {
-	projectID uuid.UUID
-	err       error
+	projectID     uuid.UUID
+	environmentID uuid.UUID
+	err           error
 }
 
-func (f fakeProjectKeyResolver) ResolveProjectID(ctx context.Context, rawKey string) (uuid.UUID, error) {
-	return f.projectID, f.err
+func (f fakeProjectKeyResolver) ResolveEnvironment(ctx context.Context, rawKey string) (uuid.UUID, uuid.UUID, error) {
+	return f.projectID, f.environmentID, f.err
 }
 
 func TestRequireProjectAPIKey_MissingHeader(t *testing.T) {
@@ -56,7 +57,7 @@ func TestRequireProjectAPIKey_Success(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/ofrep", nil)
-	req.Header.Set("Authorization", "Bearer ceci_sk_good")
+	req.Header.Set("Authorization", "Bearer leaflag_sk_good")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 

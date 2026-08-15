@@ -6,6 +6,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +28,13 @@ func distFS() fs.FS {
 func RegisterSPA(r *gin.Engine) {
 	assets := distFS()
 	r.NoRoute(func(c *gin.Context) {
+		// A control-plane SPA must never turn a missing runtime endpoint into
+		// a successful HTML response. Data-plane routes are resolved before
+		// this fallback when they are enabled in all-in-one mode.
+		if strings.HasPrefix(c.Request.URL.Path, "/ofrep/") || strings.HasPrefix(c.Request.URL.Path, "/v1/") || strings.HasPrefix(c.Request.URL.Path, "/internal/") {
+			c.Status(http.StatusNotFound)
+			return
+		}
 		if c.Request.Method != http.MethodGet {
 			c.Status(http.StatusNotFound)
 			return

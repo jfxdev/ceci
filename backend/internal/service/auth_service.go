@@ -16,15 +16,18 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/argon2"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
 )
 
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidToken       = errors.New("invalid token")
 	ErrEmailTaken         = errors.New("email already registered")
+	ErrBootstrapAdminSSO  = errors.New("bootstrap administrator cannot use sso")
+	ErrFederatedEmailUsed = errors.New("email is already used by a local account")
+	ErrJITDisabled        = errors.New("just-in-time provisioning is disabled")
 )
 
 type AuthService struct {
@@ -119,22 +122,73 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (access
 	if err != nil || !ok {
 		return "", "", nil, ErrInvalidCredentials
 	}
-	accessToken, err = s.issueAccessToken(user.ID)
+	accessToken, refreshToken, err = s.CreateSession(ctx, user)
 	if err != nil {
 		return "", "", nil, err
 	}
+	return accessToken, refreshToken, user, nil
+}
+
+// CreateSession issues the application's own access and refresh tokens after
+// any successful authentication method.
+func (s *AuthService) CreateSession(ctx context.Context, user *model.User) (accessToken, refreshToken string, err error) {
+	accessToken, err = s.issueAccessToken(user.ID)
+	if err != nil {
+		return "", "", err
+	}
 	rawRefresh, refreshHash, err := newOpaqueToken()
 	if err != nil {
-		return "", "", nil, err
+		return "", "", err
 	}
 	if err := s.users.CreateRefreshToken(ctx, &model.RefreshToken{
 		UserID:    user.ID,
 		TokenHash: refreshHash,
 		ExpiresAt: time.Now().Add(constants.RefreshTokenTTL),
 	}); err != nil {
-		return "", "", nil, err
+		return "", "", err
 	}
-	return accessToken, rawRefresh, user, nil
+	return accessToken, rawRefresh, nil
+}
+
+// LoginOIDC resolves a stable provider subject to a user. It never links an
+// existing local account by email: that would allow an IdP email collision to
+// take over a password-backed account. New OIDC users are created only when
+// JIT provisioning is explicitly enabled.
+func (s *AuthService) LoginOIDC(ctx context.Context, provider, subject, email, name string, jitEnabled bool) (*model.User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if identity, err := s.users.FindIdentity(ctx, provider, subject); err == nil {
+		user, err := s.users.FindByID(ctx, identity.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if user.IsBootstrapAdmin {
+			return nil, ErrBootstrapAdminSSO
+		}
+		return user, nil
+	} else if !errors.Is(err, repository.ErrNotFound) {
+		return nil, err
+	}
+
+	if user, err := s.users.FindByEmail(ctx, email); err == nil {
+		if user.IsBootstrapAdmin {
+			return nil, ErrBootstrapAdminSSO
+		}
+		return nil, ErrFederatedEmailUsed
+	} else if !errors.Is(err, repository.ErrNotFound) {
+		return nil, err
+	}
+	if !jitEnabled {
+		return nil, ErrJITDisabled
+	}
+
+	user := &model.User{Email: email, Name: strings.TrimSpace(name)}
+	if err := s.users.Create(ctx, user); err != nil {
+		return nil, err
+	}
+	if err := s.users.CreateIdentity(ctx, &model.AuthIdentity{UserID: user.ID, Provider: provider, Subject: subject}); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 // Refresh rotates the refresh token and issues a new access token.
@@ -178,6 +232,14 @@ func (s *AuthService) Logout(ctx context.Context, rawRefresh string) error {
 
 func (s *AuthService) Me(ctx context.Context, userID uuid.UUID) (*model.User, error) {
 	return s.users.FindByID(ctx, userID)
+}
+
+func (s *AuthService) IsAdmin(ctx context.Context, userID uuid.UUID) (bool, error) {
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	return user.IsAdmin, nil
 }
 
 // Register creates a new user with a hashed password. Returns ErrEmailTaken

@@ -7,12 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
 )
 
-func boolFlag(enabled bool) *model.FeatureFlag {
-	return &model.FeatureFlag{
+func boolFlag(enabled bool) envFlag {
+	return envFlag{
 		Key:            "new-checkout",
 		Enabled:        enabled,
 		DefaultVariant: "off",
@@ -105,6 +105,25 @@ func TestEvaluateFlag_InAndContains(t *testing.T) {
 	assert.Equal(t, "on", res.Variant)
 }
 
+func TestEvaluateFlag_NotInAndNotContains(t *testing.T) {
+	f := boolFlag(true)
+	f.Rules = []model.FlagRule{
+		{Priority: 1, ConditionJSON: datatypes.JSON(`{"not in": [{"var": "country"}, ["US", "BR"]]}`), VariantKey: "on"},
+	}
+	res := evaluateFlag(f, map[string]any{"country": "FR"})
+	assert.Equal(t, "on", res.Variant, "FR is not in [US, BR]")
+
+	res = evaluateFlag(f, map[string]any{"country": "BR"})
+	assert.Equal(t, "off", res.Variant, "BR is in [US, BR], so 'not in' should not match")
+
+	f.Rules[0].ConditionJSON = datatypes.JSON(`{"not contains": [{"var": "email"}, "@acme.com"]}`)
+	res = evaluateFlag(f, map[string]any{"email": "a@other.com"})
+	assert.Equal(t, "on", res.Variant, "email doesn't contain @acme.com")
+
+	res = evaluateFlag(f, map[string]any{"email": "a@acme.com"})
+	assert.Equal(t, "off", res.Variant, "email contains @acme.com, so 'not contains' should not match")
+}
+
 func TestEvaluateFlag_NumberComparisons(t *testing.T) {
 	f := boolFlag(true)
 	f.Rules = []model.FlagRule{
@@ -148,4 +167,57 @@ func TestEvaluateFlag_UnknownVariantIsError(t *testing.T) {
 	f.DefaultVariant = "does-not-exist"
 	res := evaluateFlag(f, map[string]any{})
 	assert.Equal(t, constants.ReasonError, res.Reason)
+}
+
+func TestEvaluateFlag_NotOperator(t *testing.T) {
+	f := boolFlag(true)
+	f.Rules = []model.FlagRule{
+		{Priority: 1, ConditionJSON: datatypes.JSON(`{"!": {"==": [{"var": "plan"}, "free"]}}`), VariantKey: "on"},
+	}
+	res := evaluateFlag(f, map[string]any{"plan": "pro"})
+	assert.Equal(t, "on", res.Variant, "not-equal-free should match for plan=pro")
+
+	res = evaluateFlag(f, map[string]any{"plan": "free"})
+	assert.Equal(t, "off", res.Variant, "not-equal-free should not match for plan=free")
+}
+
+func TestEvaluateFlag_NotOperator_ArrayWrapped(t *testing.T) {
+	f := boolFlag(true)
+	f.Rules = []model.FlagRule{
+		{Priority: 1, ConditionJSON: datatypes.JSON(`{"!": [{"==": [{"var": "plan"}, "free"]}]}`), VariantKey: "on"},
+	}
+	res := evaluateFlag(f, map[string]any{"plan": "pro"})
+	assert.Equal(t, "on", res.Variant)
+}
+
+func TestEvaluateFlag_SemverOperators(t *testing.T) {
+	f := boolFlag(true)
+	f.Rules = []model.FlagRule{
+		{Priority: 1, ConditionJSON: datatypes.JSON(`{"semver>": [{"var": "appVersion"}, "1.2.0"]}`), VariantKey: "on"},
+	}
+	res := evaluateFlag(f, map[string]any{"appVersion": "1.10.0"})
+	assert.Equal(t, "on", res.Variant, "1.10.0 > 1.2.0 numerically, not lexically")
+
+	res = evaluateFlag(f, map[string]any{"appVersion": "1.1.0"})
+	assert.Equal(t, "off", res.Variant)
+
+	f.Rules[0].ConditionJSON = datatypes.JSON(`{"semver=": [{"var": "appVersion"}, "2.0.0"]}`)
+	res = evaluateFlag(f, map[string]any{"appVersion": "2.0.0-beta.1"})
+	assert.Equal(t, "on", res.Variant, "pre-release suffix is ignored for equality")
+
+	f.Rules[0].ConditionJSON = datatypes.JSON(`{"semver<": [{"var": "appVersion"}, "1.0.0"]}`)
+	res = evaluateFlag(f, map[string]any{"appVersion": "0.9.9"})
+	assert.Equal(t, "on", res.Variant)
+}
+
+func TestEvaluateFlag_MatchesRegexOperator(t *testing.T) {
+	f := boolFlag(true)
+	f.Rules = []model.FlagRule{
+		{Priority: 1, ConditionJSON: datatypes.JSON(`{"matches": [{"var": "email"}, "^[a-z]+@acme\\.com$"]}`), VariantKey: "on"},
+	}
+	res := evaluateFlag(f, map[string]any{"email": "jane@acme.com"})
+	assert.Equal(t, "on", res.Variant)
+
+	res = evaluateFlag(f, map[string]any{"email": "jane@other.com"})
+	assert.Equal(t, "off", res.Variant)
 }

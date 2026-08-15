@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/model"
 )
 
 func TestUserRepository_CreateAndFindByEmail(t *testing.T) {

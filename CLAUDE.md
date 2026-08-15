@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ceci is a feature-flag platform compatible with [OpenFeature](https://openfeature.dev) (via [OFREP](https://github.com/open-feature/protocol)), plus a Consul-style key/value parameter store. Permissions are scoped per **project** — a project groups both feature flags and parameters, and members hold a role (`owner` > `admin` > `editor` > `viewer`).
+LeaFlag is a feature-flag platform compatible with [OpenFeature](https://openfeature.dev) (via [OFREP](https://github.com/open-feature/protocol)), plus a Consul-style key/value parameter store. Permissions are scoped per **project** — a project groups both feature flags and parameters, and members hold a role (`owner` > `admin` > `editor` > `viewer`).
 
 Stack: Go/gin/GORM+PostgreSQL backend, React/Vite/TypeScript/shadcn (Tailwind) frontend, argon2id + JWT/rotating-refresh-cookie auth. Single Docker image — the frontend build is embedded into the Go binary via `go:embed`.
 
@@ -14,9 +14,9 @@ Stack: Go/gin/GORM+PostgreSQL backend, React/Vite/TypeScript/shadcn (Tailwind) f
 cp .env.example .env
 make dev            # postgres (docker compose) + backend :8110 (air hot reload) + vite :8111 (proxies /api, /ofrep)
 make test           # go test ./... -cover  +  vitest run --coverage
-make build           # builds frontend, embeds into backend, outputs bin/ceci
+make build           # builds frontend, embeds into backend, outputs bin/leaflag
 make docker-build
-make seed            # creates admin@ceci.local / admin123 (idempotent)
+make seed            # creates admin@leaflag.local / admin123 (idempotent)
 ```
 
 Single test/package:
@@ -48,7 +48,7 @@ middleware/   gin.HandlerFunc auth/role/api-key guards
 web/          embeds the built frontend and serves it as an SPA fallback
 ```
 
-`backend/cmd/ceci/main.go` only wires dependencies (config → db → repositories → services → router) and starts the server — no routes are registered there, no business logic. `backend/cmd/seed/main.go` is the standalone seed script.
+`backend/cmd/leaflag/main.go` only wires dependencies (config → db → repositories → services → router) and starts the server — no routes are registered there, no business logic. `backend/cmd/seed/main.go` is the standalone seed script.
 
 Each route file declares a narrow local interface for the service(s) it depends on (e.g. `authService` in `auth_routes.go`) rather than depending on the concrete `*service.XService` type — this is what lets route tests use hand-rolled fakes instead of a real DB. `RegisterXRoutes(rg, concreteService)` is a thin public wrapper around the real, interface-typed `registerXRoutes(rg, service)` that's exercised in tests.
 

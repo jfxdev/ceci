@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/service"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/service"
 )
 
 type fakeAuthService struct {
@@ -27,8 +27,8 @@ type fakeAuthService struct {
 	registerErr  error
 
 	refreshAccessToken string
-	refreshNewToken     string
-	refreshErr          error
+	refreshNewToken    string
+	refreshErr         error
 
 	logoutErr error
 
@@ -87,7 +87,7 @@ func TestLoginRoute_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "access-token")
-	assert.Contains(t, w.Header().Get("Set-Cookie"), "ceci_refresh=refresh-token")
+	assert.Contains(t, w.Header().Get("Set-Cookie"), "leaflag_refresh=refresh-token")
 }
 
 func TestLoginRoute_InvalidCredentials(t *testing.T) {
@@ -161,7 +161,7 @@ func TestRegisterRoute_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, w.Code)
 	assert.Contains(t, w.Body.String(), "access-token")
-	assert.Contains(t, w.Header().Get("Set-Cookie"), "ceci_refresh=refresh-token")
+	assert.Contains(t, w.Header().Get("Set-Cookie"), "leaflag_refresh=refresh-token")
 }
 
 func TestRegisterRoute_EmailTaken(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
 )
 
 func TestProjectRepository_CreateFindUpdateDelete(t *testing.T) {

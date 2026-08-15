@@ -24,7 +24,7 @@ interface Project {
   slug: string
 }
 
-/** Project switcher, standing in for the block's "team switcher" — ceci's top-level entity is the project. */
+/** Project switcher, standing in for the block's "team switcher" — leaflag's top-level entity is the project. */
 export function TeamSwitcher() {
   const { isMobile } = useSidebar()
   const navigate = useNavigate()
@@ -50,7 +50,7 @@ export function TeamSwitcher() {
                 <Flag className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{activeProject?.name ?? "ceci"}</span>
+                <span className="truncate font-medium">{activeProject?.name ?? "LeaFlag"}</span>
                 <span className="truncate text-xs">{activeProject?.slug ?? "Select a project"}</span>
               </div>
               <ChevronsUpDown className="ml-auto" />

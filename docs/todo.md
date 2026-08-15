@@ -1,4 +1,4 @@
-# ceci — próximos passos
+# LeaFlag — próximos passos
 
 Status atual: auth, projects, parameters (KV hierárquico+versionado), feature flags (CRUD+evaluator+FlagEditor com rules/rollout), OFREP, sidebar layout (shadcn sidebar-07), seed, rate limit no login, CORS no OFREP — tudo testado (backend ~75-100% coverage por pacote, frontend 88.5%) e validado em browser real contra Postgres.
 
@@ -22,11 +22,14 @@ Status atual: auth, projects, parameters (KV hierárquico+versionado), feature f
 ## Média prioridade
 2. **Dockerfile produção nunca testado de verdade** — só validei o binário local (`make build`) servindo frontend embutido. Falta rodar `make docker-build` e subir o container real de ponta a ponta.
 
+2. full nested and/or editor UI
+
+
 ## Baixa prioridade
 3. **Rate limiting só no `/auth/login`** (e agora `/auth/register`) — dá pra estender pra outras rotas sensíveis (criação de project/api-key/member) se abuso virar problema real. Adiado a pedido do usuário.
 
 ## Notas técnicas pra quem pegar isso depois
-- Login seed: `admin@ceci.local` / `admin123` (via `make seed`, idempotente)
+- Login seed: `admin@leaflag.local` / `admin123` (via `make seed`, idempotente)
 - Postgres local roda na porta **5433** (5432 já ocupada por outro projeto na máquina de dev) — ver `docker-compose.yml` e `.env.example`
 - Backend :8110, frontend :8111 (Vite proxy `/api` e `/ofrep` pro backend)
 - Ferramenta de automação de browser usada nas sessões tem um bug conhecido: clique sintético não dispara o pointer event do Radix UI (Select/Dialog) — clique programático via `element.click()` no JS funciona normal. Não é bug do app.

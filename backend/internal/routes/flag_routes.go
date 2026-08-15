@@ -8,33 +8,34 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/dto"
-	"ceci/backend/internal/middleware"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/service"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/dto"
+	"leaflag/backend/internal/middleware"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/service"
 )
 
 // flagService is the subset of FlagService behavior routes depend on.
 type flagService interface {
-	List(ctx context.Context, projectID uuid.UUID) ([]model.FeatureFlag, error)
-	Get(ctx context.Context, projectID uuid.UUID, key string) (*model.FeatureFlag, error)
-	Create(ctx context.Context, projectID uuid.UUID, key, name, description, flagType, defaultVariant string, variants []service.VariantInput, rules []service.RuleInput) (*model.FeatureFlag, error)
-	Update(ctx context.Context, projectID uuid.UUID, key string, in service.UpdateInput) (*model.FeatureFlag, error)
+	List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error)
+	Get(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error)
+	Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType, defaultVariant string, enabled bool, variants []service.VariantInput, rules []service.RuleInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error)
+	Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in service.UpdateInput) (*model.FeatureFlag, error)
 	Delete(ctx context.Context, projectID uuid.UUID, key string) error
 }
 
-func RegisterFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, flags *service.FlagService) {
-	registerFlagRoutes(rg, auth, roleResolver, flags)
+func RegisterFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, flags *service.FlagService) {
+	registerFlagRoutes(rg, auth, roleResolver, envResolver, flags)
 }
 
-func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, flags flagService) {
-	scoped := rg.Group("/projects/:projectID/flags")
+func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, flags flagService) {
+	scoped := rg.Group("/projects/:projectID/environments/:envKey/flags")
 	scoped.Use(middleware.RequireAuth(auth))
 
-	scoped.GET("", middleware.RequireProjectRole(roleResolver, constants.RoleViewer), func(c *gin.Context) {
+	scoped.GET("", middleware.RequireProjectRole(roleResolver, constants.RoleViewer), middleware.RequireProjectEnvironment(envResolver), func(c *gin.Context) {
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
-		list, err := flags.List(c.Request.Context(), projectID)
+		environmentID := c.MustGet(middleware.ContextEnvironmentIDKey).(uuid.UUID)
+		list, err := flags.List(c.Request.Context(), projectID, environmentID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to list flags"})
 			return
@@ -46,15 +47,20 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		c.JSON(http.StatusOK, out)
 	})
 
-	scoped.POST("", middleware.RequireProjectRole(roleResolver, constants.RoleEditor), func(c *gin.Context) {
+	scoped.POST("", middleware.RequireProjectRole(roleResolver, constants.RoleEditor), middleware.RequireProjectEnvironment(envResolver), func(c *gin.Context) {
 		var req dto.CreateFlagRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 			return
 		}
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
-		f, err := flags.Create(c.Request.Context(), projectID, req.Key, req.Name, req.Description, req.FlagType, req.DefaultVariant,
-			toVariantInputs(req.Variants), toRuleInputs(req.Rules))
+		environmentID := c.MustGet(middleware.ContextEnvironmentIDKey).(uuid.UUID)
+		enabled := true
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+		f, err := flags.Create(c.Request.Context(), projectID, environmentID, req.Key, req.Name, req.Description, req.FlagType, req.DefaultVariant, enabled,
+			toVariantInputs(req.Variants), toRuleInputs(req.Rules), req.PrerequisiteFlagKey, req.PrerequisiteVariant)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to create flag"})
 			return
@@ -62,9 +68,10 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		c.JSON(http.StatusCreated, toFlagDTO(f))
 	})
 
-	scoped.GET("/:key", middleware.RequireProjectRole(roleResolver, constants.RoleViewer), func(c *gin.Context) {
+	scoped.GET("/:key", middleware.RequireProjectRole(roleResolver, constants.RoleViewer), middleware.RequireProjectEnvironment(envResolver), func(c *gin.Context) {
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
-		f, err := flags.Get(c.Request.Context(), projectID, c.Param("key"))
+		environmentID := c.MustGet(middleware.ContextEnvironmentIDKey).(uuid.UUID)
+		f, err := flags.Get(c.Request.Context(), projectID, environmentID, c.Param("key"))
 		if err != nil {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "flag not found"})
 			return
@@ -72,13 +79,14 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		c.JSON(http.StatusOK, toFlagDTO(f))
 	})
 
-	scoped.PATCH("/:key", middleware.RequireProjectRole(roleResolver, constants.RoleEditor), func(c *gin.Context) {
+	scoped.PATCH("/:key", middleware.RequireProjectRole(roleResolver, constants.RoleEditor), middleware.RequireProjectEnvironment(envResolver), func(c *gin.Context) {
 		var req dto.UpdateFlagRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 			return
 		}
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
+		environmentID := c.MustGet(middleware.ContextEnvironmentIDKey).(uuid.UUID)
 		in := service.UpdateInput{Enabled: req.Enabled}
 		if req.Name != "" {
 			in.Name = &req.Name
@@ -95,7 +103,9 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		if req.Rules != nil {
 			in.Rules = toRuleInputs(req.Rules)
 		}
-		f, err := flags.Update(c.Request.Context(), projectID, c.Param("key"), in)
+		in.PrerequisiteFlagKey = req.PrerequisiteFlagKey
+		in.PrerequisiteVariant = req.PrerequisiteVariant
+		f, err := flags.Update(c.Request.Context(), projectID, environmentID, c.Param("key"), in)
 		if err != nil {
 			if errors.Is(err, service.ErrFlagNotFound) {
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "flag not found"})
@@ -107,7 +117,7 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		c.JSON(http.StatusOK, toFlagDTO(f))
 	})
 
-	scoped.DELETE("/:key", middleware.RequireProjectRole(roleResolver, constants.RoleAdmin), func(c *gin.Context) {
+	scoped.DELETE("/:key", middleware.RequireProjectRole(roleResolver, constants.RoleAdmin), middleware.RequireProjectEnvironment(envResolver), func(c *gin.Context) {
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
 		if err := flags.Delete(c.Request.Context(), projectID, c.Param("key")); err != nil {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to delete flag"})
@@ -132,16 +142,24 @@ func toFlagDTO(f *model.FeatureFlag) dto.FlagDTO {
 			Rollout:     []byte(r.RolloutJSON),
 		})
 	}
+	var enabled bool
+	var defaultVariant string
+	if len(f.Configs) > 0 {
+		enabled = f.Configs[0].Enabled
+		defaultVariant = f.Configs[0].DefaultVariant
+	}
 	return dto.FlagDTO{
-		ID:             f.ID.String(),
-		Key:            f.Key,
-		Name:           f.Name,
-		Description:    f.Description,
-		FlagType:       f.FlagType,
-		Enabled:        f.Enabled,
-		DefaultVariant: f.DefaultVariant,
-		Variants:       variants,
-		Rules:          rules,
+		ID:                  f.ID.String(),
+		Key:                 f.Key,
+		Name:                f.Name,
+		Description:         f.Description,
+		FlagType:            f.FlagType,
+		Enabled:             enabled,
+		DefaultVariant:      defaultVariant,
+		Variants:            variants,
+		Rules:               rules,
+		PrerequisiteFlagKey: f.PrerequisiteFlagKey,
+		PrerequisiteVariant: f.PrerequisiteVariant,
 	}
 }
 

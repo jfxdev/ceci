@@ -10,9 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
 )
 
 var ErrAPIKeyNotFound = errors.New("api key not found")
@@ -25,9 +25,11 @@ func NewAPIKeyService(keys repository.APIKeyRepository) *APIKeyService {
 	return &APIKeyService{keys: keys}
 }
 
-// Create generates a new project API key. The raw key is returned once and
-// never stored — only its sha256 hash is persisted.
-func (s *APIKeyService) Create(ctx context.Context, projectID uuid.UUID, label string) (rawKey string, key *model.ProjectAPIKey, err error) {
+// Create generates a new project API key scoped to a single environment —
+// the same convention SDKs from other feature-flag platforms use, one key
+// per environment. The raw key is returned once and never stored — only its
+// sha256 hash is persisted.
+func (s *APIKeyService) Create(ctx context.Context, projectID, environmentID uuid.UUID, label string) (rawKey string, key *model.ProjectAPIKey, err error) {
 	b := make([]byte, 24)
 	if _, err = rand.Read(b); err != nil {
 		return "", nil, err
@@ -37,10 +39,11 @@ func (s *APIKeyService) Create(ctx context.Context, projectID uuid.UUID, label s
 	sum := sha256.Sum256([]byte(rawKey))
 
 	key = &model.ProjectAPIKey{
-		ProjectID: projectID,
-		Label:     label,
-		KeyHash:   hex.EncodeToString(sum[:]),
-		Prefix:    rawKey[:len(constants.ProjectAPIKeyPrefix)+6],
+		ProjectID:     projectID,
+		EnvironmentID: environmentID,
+		Label:         label,
+		KeyHash:       hex.EncodeToString(sum[:]),
+		Prefix:        rawKey[:len(constants.ProjectAPIKeyPrefix)+6],
 	}
 	if err := s.keys.Create(ctx, key); err != nil {
 		return "", nil, err
@@ -48,21 +51,23 @@ func (s *APIKeyService) Create(ctx context.Context, projectID uuid.UUID, label s
 	return rawKey, key, nil
 }
 
-// ResolveProjectID validates a raw bearer key and returns the project it belongs to.
-func (s *APIKeyService) ResolveProjectID(ctx context.Context, rawKey string) (uuid.UUID, error) {
+// ResolveEnvironment validates a raw bearer key and returns the project and
+// environment it belongs to — this is how OFREP requests get their
+// environment scope, without needing it spelled out in the URL.
+func (s *APIKeyService) ResolveEnvironment(ctx context.Context, rawKey string) (projectID, environmentID uuid.UUID, err error) {
 	sum := sha256.Sum256([]byte(rawKey))
 	key, err := s.keys.FindActiveByHash(ctx, hex.EncodeToString(sum[:]))
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return uuid.Nil, ErrAPIKeyNotFound
+			return uuid.Nil, uuid.Nil, ErrAPIKeyNotFound
 		}
-		return uuid.Nil, err
+		return uuid.Nil, uuid.Nil, err
 	}
-	return key.ProjectID, nil
+	return key.ProjectID, key.EnvironmentID, nil
 }
 
-func (s *APIKeyService) List(ctx context.Context, projectID uuid.UUID) ([]model.ProjectAPIKey, error) {
-	return s.keys.List(ctx, projectID)
+func (s *APIKeyService) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.ProjectAPIKey, error) {
+	return s.keys.List(ctx, projectID, environmentID)
 }
 
 func (s *APIKeyService) Revoke(ctx context.Context, id uuid.UUID) error {

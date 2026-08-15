@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
 )
 
 type fakeAPIKeyRepository struct {
@@ -40,10 +40,10 @@ func (f *fakeAPIKeyRepository) FindActiveByHash(ctx context.Context, keyHash str
 	return k, nil
 }
 
-func (f *fakeAPIKeyRepository) List(ctx context.Context, projectID uuid.UUID) ([]model.ProjectAPIKey, error) {
+func (f *fakeAPIKeyRepository) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.ProjectAPIKey, error) {
 	var out []model.ProjectAPIKey
 	for _, k := range f.byID {
-		if k.ProjectID == projectID {
+		if k.ProjectID == projectID && k.EnvironmentID == environmentID {
 			out = append(out, *k)
 		}
 	}
@@ -63,23 +63,25 @@ func TestAPIKeyService_CreateAndResolve(t *testing.T) {
 	svc := NewAPIKeyService(repo)
 	ctx := context.Background()
 	projectID := uuid.New()
+	envID := uuid.New()
 
-	rawKey, key, err := svc.Create(ctx, projectID, "CI")
+	rawKey, key, err := svc.Create(ctx, projectID, envID, "CI")
 	require.NoError(t, err)
 	assert.NotEmpty(t, rawKey)
-	assert.Contains(t, rawKey, "ceci_sk_")
+	assert.Contains(t, rawKey, "leaflag_sk_")
 
 	sum := sha256.Sum256([]byte(rawKey))
 	assert.Equal(t, hex.EncodeToString(sum[:]), key.KeyHash)
 
-	resolved, err := svc.ResolveProjectID(ctx, rawKey)
+	resolvedProject, resolvedEnv, err := svc.ResolveEnvironment(ctx, rawKey)
 	require.NoError(t, err)
-	assert.Equal(t, projectID, resolved)
+	assert.Equal(t, projectID, resolvedProject)
+	assert.Equal(t, envID, resolvedEnv)
 }
 
 func TestAPIKeyService_ResolveInvalidKey(t *testing.T) {
 	svc := NewAPIKeyService(newFakeAPIKeyRepository())
-	_, err := svc.ResolveProjectID(context.Background(), "not-a-real-key")
+	_, _, err := svc.ResolveEnvironment(context.Background(), "not-a-real-key")
 	assert.ErrorIs(t, err, ErrAPIKeyNotFound)
 }
 
@@ -88,12 +90,12 @@ func TestAPIKeyService_RevokeThenResolveFails(t *testing.T) {
 	svc := NewAPIKeyService(repo)
 	ctx := context.Background()
 
-	rawKey, key, err := svc.Create(ctx, uuid.New(), "CI")
+	rawKey, key, err := svc.Create(ctx, uuid.New(), uuid.New(), "CI")
 	require.NoError(t, err)
 
 	require.NoError(t, svc.Revoke(ctx, key.ID))
 
-	_, err = svc.ResolveProjectID(ctx, rawKey)
+	_, _, err = svc.ResolveEnvironment(ctx, rawKey)
 	assert.ErrorIs(t, err, ErrAPIKeyNotFound)
 }
 
@@ -102,13 +104,14 @@ func TestAPIKeyService_List(t *testing.T) {
 	svc := NewAPIKeyService(repo)
 	ctx := context.Background()
 	projectID := uuid.New()
+	envID := uuid.New()
 
-	_, _, err := svc.Create(ctx, projectID, "A")
+	_, _, err := svc.Create(ctx, projectID, envID, "A")
 	require.NoError(t, err)
-	_, _, err = svc.Create(ctx, projectID, "B")
+	_, _, err = svc.Create(ctx, projectID, envID, "B")
 	require.NoError(t, err)
 
-	list, err := svc.List(ctx, projectID)
+	list, err := svc.List(ctx, projectID, envID)
 	require.NoError(t, err)
 	assert.Len(t, list, 2)
 }

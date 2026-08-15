@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { api, ApiError } from "@/lib/api"
+import { useEnvironment } from "@/lib/environment"
 
 interface Flag {
   key: string
@@ -37,16 +38,17 @@ export function FlagsListPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { envKey, envPath } = useEnvironment()
 
   const { data: flags = [], isLoading } = useQuery({
-    queryKey: ["flags", projectId],
-    queryFn: () => api.get<Flag[]>(`/projects/${projectId}/flags`),
-    enabled: !!projectId,
+    queryKey: ["flags", projectId, envKey],
+    queryFn: () => api.get<Flag[]>(envPath("flags")),
+    enabled: !!projectId && !!envKey,
   })
 
   const toggleFlag = useMutation({
-    mutationFn: (flag: Flag) => api.patch(`/projects/${projectId}/flags/${flag.key}`, { enabled: !flag.enabled }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["flags", projectId] }),
+    mutationFn: (flag: Flag) => api.patch(`${envPath("flags")}/${flag.key}`, { enabled: !flag.enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["flags", projectId, envKey] }),
   })
 
   const [open, setOpen] = useState(false)
@@ -62,7 +64,7 @@ export function FlagsListPage() {
 
   const createFlag = useMutation({
     mutationFn: () =>
-      api.post(`/projects/${projectId}/flags`, {
+      api.post(envPath("flags"), {
         key,
         name,
         flagType,
@@ -70,7 +72,7 @@ export function FlagsListPage() {
         variants: variants.map((v) => ({ key: v.key, value: parseVariantValue(flagType, v.value) })),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["flags", projectId] })
+      queryClient.invalidateQueries({ queryKey: ["flags", projectId, envKey] })
       setOpen(false)
       setKey("")
       setName("")

@@ -1,10 +1,11 @@
 package dto
 
-import "ceci/backend/internal/constants"
+import "leaflag/backend/internal/constants"
 
 type CreateProjectRequest struct {
-	Name string `json:"name" binding:"required"`
-	Slug string `json:"slug" binding:"required"`
+	Name                    string   `json:"name" binding:"required"`
+	Slug                    string   `json:"slug" binding:"required"`
+	EnvironmentTemplateKeys []string `json:"environmentTemplateKeys"`
 }
 
 type UpdateProjectRequest struct {

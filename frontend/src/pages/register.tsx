@@ -34,7 +34,7 @@ export function RegisterPage() {
     <div className="flex min-h-svh items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Create your ceci account</CardTitle>
+          <CardTitle>Create your LeaFlag account</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>

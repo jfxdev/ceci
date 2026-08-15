@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { api } from "@/lib/api"
+import { useEnvironment } from "@/lib/environment"
 
 interface Parameter {
   key: string
@@ -17,6 +18,7 @@ interface Parameter {
 
 export function ParametersBrowserPage() {
   const { projectId } = useParams<{ projectId: string }>()
+  const { envKey, envPath } = useEnvironment()
   const queryClient = useQueryClient()
   const [prefix, setPrefix] = useState("")
   const [open, setOpen] = useState(false)
@@ -25,15 +27,15 @@ export function ParametersBrowserPage() {
   const [pendingDelete, setPendingDelete] = useState<Parameter | null>(null)
 
   const { data: parameters = [], isLoading } = useQuery({
-    queryKey: ["parameters", projectId, prefix],
-    queryFn: () => api.get<Parameter[]>(`/projects/${projectId}/parameters?prefix=${encodeURIComponent(prefix)}`),
-    enabled: !!projectId,
+    queryKey: ["parameters", projectId, envKey, prefix],
+    queryFn: () => api.get<Parameter[]>(`${envPath("parameters")}?prefix=${encodeURIComponent(prefix)}`),
+    enabled: !!projectId && !!envKey,
   })
 
   const upsert = useMutation({
-    mutationFn: () => api.put(`/projects/${projectId}/parameters/value/${key}`, { value }),
+    mutationFn: () => api.put(`${envPath("parameters/value")}/${key}`, { value }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["parameters", projectId] })
+      queryClient.invalidateQueries({ queryKey: ["parameters", projectId, envKey] })
       setOpen(false)
       setKey("")
       setValue("")
@@ -41,9 +43,9 @@ export function ParametersBrowserPage() {
   })
 
   const remove = useMutation({
-    mutationFn: (p: Parameter) => api.delete(`/projects/${projectId}/parameters/value/${p.key}`),
+    mutationFn: (p: Parameter) => api.delete(`${envPath("parameters/value")}/${p.key}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["parameters", projectId] })
+      queryClient.invalidateQueries({ queryKey: ["parameters", projectId, envKey] })
       setPendingDelete(null)
     },
   })

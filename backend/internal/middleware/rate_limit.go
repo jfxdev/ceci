@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
 
-	"ceci/backend/internal/dto"
+	"leaflag/backend/internal/dto"
 )
 
 // RateLimitPerIP throttles requests per client IP using a token bucket

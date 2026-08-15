@@ -16,22 +16,27 @@ type FlagRuleInput struct {
 }
 
 type CreateFlagRequest struct {
-	Key            string             `json:"key" binding:"required"`
-	Name           string             `json:"name"`
-	Description    string             `json:"description"`
-	FlagType       string             `json:"flagType" binding:"required"`
-	DefaultVariant string             `json:"defaultVariant" binding:"required"`
-	Variants       []FlagVariantInput `json:"variants" binding:"required,min=1"`
-	Rules          []FlagRuleInput    `json:"rules"`
+	Key                 string             `json:"key" binding:"required"`
+	Name                string             `json:"name"`
+	Description         string             `json:"description"`
+	FlagType            string             `json:"flagType" binding:"required"`
+	Enabled             *bool              `json:"enabled"`
+	DefaultVariant      string             `json:"defaultVariant" binding:"required"`
+	Variants            []FlagVariantInput `json:"variants" binding:"required,min=1"`
+	Rules               []FlagRuleInput    `json:"rules"`
+	PrerequisiteFlagKey string             `json:"prerequisiteFlagKey,omitempty"`
+	PrerequisiteVariant string             `json:"prerequisiteVariant,omitempty"`
 }
 
 type UpdateFlagRequest struct {
-	Name           string             `json:"name"`
-	Description    string             `json:"description"`
-	Enabled        *bool              `json:"enabled"`
-	DefaultVariant string             `json:"defaultVariant"`
-	Variants       []FlagVariantInput `json:"variants"`
-	Rules          []FlagRuleInput    `json:"rules"`
+	Name                string             `json:"name"`
+	Description         string             `json:"description"`
+	Enabled             *bool              `json:"enabled"`
+	DefaultVariant      string             `json:"defaultVariant"`
+	Variants            []FlagVariantInput `json:"variants"`
+	Rules               []FlagRuleInput    `json:"rules"`
+	PrerequisiteFlagKey *string            `json:"prerequisiteFlagKey"`
+	PrerequisiteVariant *string            `json:"prerequisiteVariant"`
 }
 
 type FlagVariantDTO struct {
@@ -48,13 +53,15 @@ type FlagRuleDTO struct {
 }
 
 type FlagDTO struct {
-	ID             string           `json:"id"`
-	Key            string           `json:"key"`
-	Name           string           `json:"name"`
-	Description    string           `json:"description"`
-	FlagType       string           `json:"flagType"`
-	Enabled        bool             `json:"enabled"`
-	DefaultVariant string           `json:"defaultVariant"`
-	Variants       []FlagVariantDTO `json:"variants"`
-	Rules          []FlagRuleDTO    `json:"rules"`
+	ID                  string           `json:"id"`
+	Key                 string           `json:"key"`
+	Name                string           `json:"name"`
+	Description         string           `json:"description"`
+	FlagType            string           `json:"flagType"`
+	Enabled             bool             `json:"enabled"`
+	DefaultVariant      string           `json:"defaultVariant"`
+	Variants            []FlagVariantDTO `json:"variants"`
+	Rules               []FlagRuleDTO    `json:"rules"`
+	PrerequisiteFlagKey string           `json:"prerequisiteFlagKey,omitempty"`
+	PrerequisiteVariant string           `json:"prerequisiteVariant,omitempty"`
 }

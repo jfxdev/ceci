@@ -9,9 +9,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { api, ApiError } from "@/lib/api"
+import { useEnvironment } from "@/lib/environment"
 
-const OPERATORS = ["==", "!=", ">", "<", "in", "contains"] as const
+const OPERATORS = [
+  "==",
+  "!=",
+  ">",
+  "<",
+  "in",
+  "not in",
+  "contains",
+  "not contains",
+  "semver>",
+  "semver<",
+  "semver=",
+  "matches",
+] as const
 type Operator = (typeof OPERATORS)[number]
+
+const OPERATOR_PLACEHOLDERS: Partial<Record<Operator, string>> = {
+  in: "value (comma-separated for 'in')",
+  "not in": "value (comma-separated)",
+  matches: "regex pattern",
+  "semver>": "1.2.3",
+  "semver<": "1.2.3",
+  "semver=": "1.2.3",
+}
 
 const COMBINATORS = ["and", "or"] as const
 type Combinator = (typeof COMBINATORS)[number]
@@ -26,13 +49,14 @@ interface RolloutBucket {
   percentage: string
 }
 
-interface ConditionRow {
+export interface ConditionRow {
   attribute: string
   operator: Operator
   value: string
+  negate: boolean
 }
 
-interface RuleRow {
+export interface RuleRow {
   priority: number
   description: string
   combinator: Combinator
@@ -50,7 +74,16 @@ interface FlagDTO {
   defaultVariant: string
   variants: { key: string; value: unknown }[]
   rules: { priority: number; description: string; condition: unknown; variantKey: string; rollout?: unknown }[]
+  prerequisiteFlagKey?: string
+  prerequisiteVariant?: string
 }
+
+interface FlagListItem {
+  key: string
+  variants: { key: string }[]
+}
+
+const NONE_PREREQUISITE = "__none__"
 
 function parseVariantValue(flagType: string, raw: string): unknown {
   if (flagType === "boolean") return raw === "true"
@@ -63,20 +96,28 @@ function stringifyVariantValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value)
 }
 
-/** Reconstructs a single {attribute, operator, value} leaf from a JSONLogic comparison node. */
-function conditionToLeaf(condition: unknown): ConditionRow {
+/** Reconstructs a single {attribute, operator, value, negate} leaf from a JSONLogic comparison node. */
+export function conditionToLeaf(condition: unknown): ConditionRow {
   if (condition && typeof condition === "object") {
+    // A `{"!": <node>}` wrapper negates the inner comparison — unwrap it
+    // and mark negate, rather than treating "!" as its own operator (it's
+    // unary, unlike every entry in OPERATORS).
+    const notArg = (condition as Record<string, unknown>)["!"]
+    if (notArg !== undefined) {
+      const inner = Array.isArray(notArg) && notArg.length === 1 ? notArg[0] : notArg
+      return { ...conditionToLeaf(inner), negate: true }
+    }
     for (const op of OPERATORS) {
       const args = (condition as Record<string, unknown>)[op]
       if (Array.isArray(args) && args.length === 2) {
         const [left, right] = args
         const attribute = (left as { var?: string })?.var ?? ""
         const value = Array.isArray(right) ? right.join(",") : String(right)
-        return { attribute, operator: op, value }
+        return { attribute, operator: op, value, negate: false }
       }
     }
   }
-  return { attribute: "", operator: "==", value: "" }
+  return { attribute: "", operator: "==", value: "", negate: false }
 }
 
 /**
@@ -85,7 +126,7 @@ function conditionToLeaf(condition: unknown): ConditionRow {
  * (e.g. and-of-or) falls back to a single blank leaf, since this editor only exposes one
  * combinator level.
  */
-function conditionToRule(condition: unknown): { combinator: Combinator; conditions: ConditionRow[] } {
+export function conditionToRule(condition: unknown): { combinator: Combinator; conditions: ConditionRow[] } {
   if (condition && typeof condition === "object") {
     for (const combinator of COMBINATORS) {
       const args = (condition as Record<string, unknown>)[combinator]
@@ -97,14 +138,16 @@ function conditionToRule(condition: unknown): { combinator: Combinator; conditio
   return { combinator: "and", conditions: [conditionToLeaf(condition)] }
 }
 
-function leafToCondition(leaf: ConditionRow): unknown {
-  const value: unknown = leaf.operator === "in" ? leaf.value.split(",").map((s) => s.trim()) : leaf.value
-  return { [leaf.operator]: [{ var: leaf.attribute }, value] }
+export function leafToCondition(leaf: ConditionRow): unknown {
+  const value: unknown =
+    leaf.operator === "in" || leaf.operator === "not in" ? leaf.value.split(",").map((s) => s.trim()) : leaf.value
+  const node = { [leaf.operator]: [{ var: leaf.attribute }, value] }
+  return leaf.negate ? { "!": node } : node
 }
 
-function ruleToCondition(rule: RuleRow): unknown {
+export function ruleToCondition(rule: RuleRow): unknown {
   if (rule.conditions.length <= 1) {
-    return leafToCondition(rule.conditions[0] ?? { attribute: "", operator: "==", value: "" })
+    return leafToCondition(rule.conditions[0] ?? { attribute: "", operator: "==", value: "", negate: false })
   }
   return { [rule.combinator]: rule.conditions.map(leafToCondition) }
 }
@@ -114,24 +157,36 @@ export function FlagEditorPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
+  const { envKey, envPath } = useEnvironment()
 
   const { data: flag, isLoading } = useQuery({
-    queryKey: ["flag", projectId, key],
-    queryFn: () => api.get<FlagDTO>(`/projects/${projectId}/flags/${key}`),
-    enabled: !!projectId && !!key,
+    queryKey: ["flag", projectId, envKey, key],
+    queryFn: () => api.get<FlagDTO>(`${envPath("flags")}/${key}`),
+    enabled: !!projectId && !!envKey && !!key,
   })
+
+  const { data: allFlags } = useQuery({
+    queryKey: ["flags", projectId, envKey],
+    queryFn: () => api.get<FlagListItem[]>(envPath("flags")),
+    enabled: !!projectId && !!envKey,
+  })
+  const prerequisiteCandidates = (allFlags ?? []).filter((f) => f.key !== key)
 
   const [name, setName] = useState("")
   const [enabled, setEnabled] = useState(true)
   const [defaultVariant, setDefaultVariant] = useState("")
   const [variants, setVariants] = useState<VariantRow[]>([])
   const [rules, setRules] = useState<RuleRow[]>([])
+  const [prerequisiteFlagKey, setPrerequisiteFlagKey] = useState("")
+  const [prerequisiteVariant, setPrerequisiteVariant] = useState("")
 
   useEffect(() => {
     if (!flag) return
     setName(flag.name)
     setEnabled(flag.enabled)
     setDefaultVariant(flag.defaultVariant)
+    setPrerequisiteFlagKey(flag.prerequisiteFlagKey ?? "")
+    setPrerequisiteVariant(flag.prerequisiteVariant ?? "")
     setVariants(flag.variants.map((v) => ({ key: v.key, value: stringifyVariantValue(v.value) })))
     setRules(
       [...flag.rules]
@@ -152,10 +207,12 @@ export function FlagEditorPage() {
   const save = useMutation({
     mutationFn: () => {
       if (!flag) throw new Error("flag not loaded")
-      return api.patch(`/projects/${projectId}/flags/${key}`, {
+      return api.patch(`${envPath("flags")}/${key}`, {
         name,
         enabled,
         defaultVariant,
+        prerequisiteFlagKey,
+        prerequisiteVariant: prerequisiteFlagKey ? prerequisiteVariant : "",
         variants: variants.map((v) => ({ key: v.key, value: parseVariantValue(flag.flagType, v.value) })),
         rules: rules.map((r) => ({
           priority: r.priority,
@@ -169,8 +226,8 @@ export function FlagEditorPage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["flags", projectId] })
-      queryClient.invalidateQueries({ queryKey: ["flag", projectId, key] })
+      queryClient.invalidateQueries({ queryKey: ["flags", projectId, envKey] })
+      queryClient.invalidateQueries({ queryKey: ["flag", projectId, envKey, key] })
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to save flag"),
   })
@@ -192,7 +249,7 @@ export function FlagEditorPage() {
         priority: prev.length + 1,
         description: "",
         combinator: "and",
-        conditions: [{ attribute: "", operator: "==", value: "" }],
+        conditions: [{ attribute: "", operator: "==", value: "", negate: false }],
         variantKey: defaultVariant,
         rollout: [],
       },
@@ -210,7 +267,7 @@ export function FlagEditorPage() {
   function addCondition(ruleIndex: number) {
     setRules((prev) =>
       prev.map((r, idx) =>
-        idx === ruleIndex ? { ...r, conditions: [...r.conditions, { attribute: "", operator: "==", value: "" }] } : r,
+        idx === ruleIndex ? { ...r, conditions: [...r.conditions, { attribute: "", operator: "==", value: "", negate: false }] } : r,
       ),
     )
   }
@@ -300,6 +357,45 @@ export function FlagEditorPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex flex-col gap-2 max-w-xs">
+              <Label>Prerequisite flag (optional — this flag only serves non-default when the prerequisite resolves to the chosen variant)</Label>
+              <Select
+                value={prerequisiteFlagKey || NONE_PREREQUISITE}
+                onValueChange={(v) => {
+                  setPrerequisiteFlagKey(v === NONE_PREREQUISITE ? "" : v)
+                  setPrerequisiteVariant("")
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="none" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_PREREQUISITE}>None</SelectItem>
+                  {prerequisiteCandidates.map((f) => (
+                    <SelectItem key={f.key} value={f.key}>
+                      {f.key}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {prerequisiteFlagKey && (
+              <div className="flex flex-col gap-2 max-w-xs">
+                <Label>Required prerequisite variant</Label>
+                <Select value={prerequisiteVariant} onValueChange={setPrerequisiteVariant}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="variant..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(prerequisiteCandidates.find((f) => f.key === prerequisiteFlagKey)?.variants ?? []).map((v) => (
+                      <SelectItem key={v.key} value={v.key}>
+                        {v.key}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -405,6 +501,10 @@ export function FlagEditorPage() {
                         onChange={(e) => updateCondition(i, ci, { attribute: e.target.value })}
                         className="w-40"
                       />
+                      <div className="flex items-center gap-1" title="Negate this condition">
+                        <Switch checked={c.negate} onCheckedChange={(v) => updateCondition(i, ci, { negate: v })} />
+                        <Label className="text-xs text-muted-foreground">not</Label>
+                      </div>
                       <Select value={c.operator} onValueChange={(v) => updateCondition(i, ci, { operator: v as Operator })}>
                         <SelectTrigger className="w-28">
                           <SelectValue />
@@ -418,7 +518,7 @@ export function FlagEditorPage() {
                         </SelectContent>
                       </Select>
                       <Input
-                        placeholder="value (comma-separated for 'in')"
+                        placeholder={OPERATOR_PLACEHOLDERS[c.operator] ?? "value"}
                         value={c.value}
                         onChange={(e) => updateCondition(i, ci, { value: e.target.value })}
                       />

@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
 )
 
 var errConditionMismatch = errors.New("condition operands mismatch")
@@ -23,10 +26,38 @@ type EvaluationResult struct {
 	ErrorCode string
 }
 
+// envFlag is a flag flattened against one environment: its shared variant
+// catalog plus that environment's enabled/default-variant config and
+// targeting rules (both env-scoped, see FlagRepository).
+type envFlag struct {
+	Key            string
+	Enabled        bool
+	DefaultVariant string
+	Variants       []model.FlagVariant
+	Rules          []model.FlagRule
+}
+
+// toEnvFlag flattens a flag's env-scoped FlagEnvironmentConfig (preloaded by
+// the repository for exactly the requested environment) onto the flag. A
+// flag with no config row for this environment is treated as disabled — new
+// environments start every flag off until explicitly configured.
+func toEnvFlag(flag *model.FeatureFlag) envFlag {
+	ef := envFlag{Key: flag.Key, Variants: flag.Variants, Rules: flag.Rules}
+	if len(flag.Configs) > 0 {
+		ef.Enabled = flag.Configs[0].Enabled
+		ef.DefaultVariant = flag.Configs[0].DefaultVariant
+	} else if len(flag.Variants) > 0 {
+		// No config row for this environment: fail closed to the first
+		// variant rather than erroring, since "" wouldn't match any variant.
+		ef.DefaultVariant = flag.Variants[0].Key
+	}
+	return ef
+}
+
 // evaluate runs the targeting engine for a single flag: disabled check, then
 // ordered rule matching (first match wins, with optional percentage
 // rollout), falling back to the flag's default variant.
-func evaluateFlag(flag *model.FeatureFlag, evalCtx map[string]any) EvaluationResult {
+func evaluateFlag(flag envFlag, evalCtx map[string]any) EvaluationResult {
 	if !flag.Enabled {
 		return resultFor(flag, flag.DefaultVariant, constants.ReasonDisabled)
 	}
@@ -59,7 +90,7 @@ func evaluateFlag(flag *model.FeatureFlag, evalCtx map[string]any) EvaluationRes
 	return resultFor(flag, flag.DefaultVariant, constants.ReasonDefault)
 }
 
-func resultFor(flag *model.FeatureFlag, variantKey, reason string) EvaluationResult {
+func resultFor(flag envFlag, variantKey, reason string) EvaluationResult {
 	for _, v := range flag.Variants {
 		if v.Key == variantKey {
 			var value any
@@ -153,6 +184,22 @@ func applyOperator(op string, rawArgs any, evalCtx map[string]any) (any, error) 
 			return nil, errConditionMismatch
 		}
 		return evalBoolChain(op, args, evalCtx)
+	case "!":
+		// JSONLogic allows "!" with either a bare inner node or a
+		// single-element array wrapping it.
+		inner := rawArgs
+		if arr, isArr := rawArgs.([]any); isArr && len(arr) == 1 {
+			inner = arr[0]
+		}
+		result, err := evalNode(inner, evalCtx)
+		if err != nil {
+			return nil, err
+		}
+		b, ok := result.(bool)
+		if !ok {
+			return nil, errConditionMismatch
+		}
+		return !b, nil
 	}
 
 	args, ok := rawArgs.([]any)
@@ -179,8 +226,20 @@ func applyOperator(op string, rawArgs any, evalCtx map[string]any) (any, error) 
 		return compareNumbers(left, right, func(a, b float64) bool { return a < b })
 	case "in":
 		return membershipCheck(left, right)
+	case "not in":
+		return negatedMembershipCheck(left, right)
 	case "contains":
 		return membershipCheck(right, left)
+	case "not contains":
+		return negatedMembershipCheck(right, left)
+	case "semver>":
+		return compareSemverOp(left, right, func(c int) bool { return c > 0 })
+	case "semver<":
+		return compareSemverOp(left, right, func(c int) bool { return c < 0 })
+	case "semver=":
+		return compareSemverOp(left, right, func(c int) bool { return c == 0 })
+	case "matches":
+		return regexMatch(left, right)
 	default:
 		return nil, fmt.Errorf("unsupported operator %q", op)
 	}
@@ -226,6 +285,75 @@ func toFloat(v any) (float64, bool) {
 	}
 }
 
+// compareSemverOp compares two "major.minor.patch"-shaped version strings
+// (pre-release/build suffixes are ignored) and applies cmp to the 3-way
+// comparison result (-1, 0, 1).
+func compareSemverOp(left, right any, cmp func(c int) bool) (bool, error) {
+	c, err := compareSemver(fmt.Sprint(left), fmt.Sprint(right))
+	if err != nil {
+		return false, err
+	}
+	return cmp(c), nil
+}
+
+func compareSemver(a, b string) (int, error) {
+	av, err := parseSemver(a)
+	if err != nil {
+		return 0, err
+	}
+	bv, err := parseSemver(b)
+	if err != nil {
+		return 0, err
+	}
+	for i := 0; i < 3; i++ {
+		if av[i] != bv[i] {
+			if av[i] < bv[i] {
+				return -1, nil
+			}
+			return 1, nil
+		}
+	}
+	return 0, nil
+}
+
+func parseSemver(v string) ([3]int, error) {
+	var out [3]int
+	// Strip any pre-release/build metadata (e.g. "1.2.3-beta.1").
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.SplitN(v, ".", 3)
+	for i := 0; i < 3; i++ {
+		if i >= len(parts) {
+			break
+		}
+		n, err := strconv.Atoi(parts[i])
+		if err != nil {
+			return out, errConditionMismatch
+		}
+		out[i] = n
+	}
+	return out, nil
+}
+
+var regexCache sync.Map // string -> *regexp.Regexp
+
+func regexMatch(value, pattern any) (bool, error) {
+	pat := fmt.Sprint(pattern)
+	var re *regexp.Regexp
+	if cached, ok := regexCache.Load(pat); ok {
+		re = cached.(*regexp.Regexp)
+	} else {
+		compiled, err := regexp.Compile(pat)
+		if err != nil {
+			return false, errConditionMismatch
+		}
+		regexCache.Store(pat, compiled)
+		re = compiled
+	}
+	return re.MatchString(fmt.Sprint(value)), nil
+}
+
 func membershipCheck(needle, haystack any) (bool, error) {
 	list, ok := haystack.([]any)
 	if !ok {
@@ -240,4 +368,14 @@ func membershipCheck(needle, haystack any) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// negatedMembershipCheck backs "not in"/"not contains" — same argument
+// shape as membershipCheck, inverted result, error propagated unchanged.
+func negatedMembershipCheck(needle, haystack any) (bool, error) {
+	ok, err := membershipCheck(needle, haystack)
+	if err != nil {
+		return false, err
+	}
+	return !ok, nil
 }

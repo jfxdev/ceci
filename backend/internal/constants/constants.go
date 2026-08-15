@@ -30,18 +30,19 @@ func (r ProjectRole) Valid() bool {
 
 // OFREP evaluation reason codes.
 const (
-	ReasonStatic          = "STATIC"
-	ReasonTargetingMatch  = "TARGETING_MATCH"
-	ReasonDefault         = "DEFAULT"
-	ReasonDisabled        = "DISABLED"
-	ReasonError           = "ERROR"
+	ReasonStatic             = "STATIC"
+	ReasonTargetingMatch     = "TARGETING_MATCH"
+	ReasonDefault            = "DEFAULT"
+	ReasonDisabled           = "DISABLED"
+	ReasonError              = "ERROR"
+	ReasonPrerequisiteFailed = "PREREQUISITE_FAILED"
 )
 
 // OFREP error codes.
 const (
-	ErrCodeFlagNotFound   = "FLAG_NOT_FOUND"
-	ErrCodeParseError     = "PARSE_ERROR"
-	ErrCodeGeneral        = "GENERAL"
+	ErrCodeFlagNotFound     = "FLAG_NOT_FOUND"
+	ErrCodeParseError       = "PARSE_ERROR"
+	ErrCodeGeneral          = "GENERAL"
 	ErrCodeProviderNotReady = "PROVIDER_NOT_READY"
 )
 
@@ -64,10 +65,10 @@ const (
 )
 
 const (
-	AuthHeaderName   = "Authorization"
-	BearerPrefix     = "Bearer "
-	RefreshCookieName = "ceci_refresh"
-	ProjectAPIKeyPrefix = "ceci_sk_"
+	AuthHeaderName      = "Authorization"
+	BearerPrefix        = "Bearer "
+	RefreshCookieName   = "leaflag_refresh"
+	ProjectAPIKeyPrefix = "leaflag_sk_"
 )
 
 const (
@@ -75,4 +76,9 @@ const (
 	FlagTypeString  = "string"
 	FlagTypeNumber  = "number"
 	FlagTypeObject  = "object"
+)
+
+const (
+	DefaultEnvironmentKey  = "all"
+	DefaultEnvironmentName = "All"
 )

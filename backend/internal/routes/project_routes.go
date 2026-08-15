@@ -8,17 +8,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/dto"
-	"ceci/backend/internal/middleware"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
-	"ceci/backend/internal/service"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/dto"
+	"leaflag/backend/internal/middleware"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
+	"leaflag/backend/internal/service"
 )
 
 // projectService is the subset of ProjectService behavior routes depend on.
 type projectService interface {
-	Create(ctx context.Context, creatorID uuid.UUID, name, slug string) (*model.Project, error)
+	Create(ctx context.Context, creatorID uuid.UUID, name, slug string, environmentTemplateKeys []string) (*model.Project, error)
 	Get(ctx context.Context, id uuid.UUID) (*model.Project, error)
 	Update(ctx context.Context, id uuid.UUID, name string) (*model.Project, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -30,11 +30,22 @@ type projectService interface {
 	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
 }
 
-func RegisterProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, projects *service.ProjectService) {
-	registerProjectRoutes(rg, auth, projects)
+type projectAccessGroupService interface {
+	ListProjectGrants(ctx context.Context, projectID uuid.UUID) ([]repository.ProjectGroupGrant, error)
+	GrantProject(ctx context.Context, projectID, groupID uuid.UUID, role constants.ProjectRole) error
+	UpdateProjectGrant(ctx context.Context, projectID, groupID uuid.UUID, role constants.ProjectRole) error
+	RevokeProjectGrant(ctx context.Context, projectID, groupID uuid.UUID) error
 }
 
-func registerProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, projects projectService) {
+func RegisterProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, projects *service.ProjectService, groups *service.AccessGroupService) {
+	registerProjectRoutes(rg, auth, projects, groups)
+}
+
+func registerProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, projects projectService, accessGroupServices ...projectAccessGroupService) {
+	var accessGroups projectAccessGroupService
+	if len(accessGroupServices) > 0 {
+		accessGroups = accessGroupServices[0]
+	}
 	authed := rg.Group("/projects")
 	authed.Use(middleware.RequireAuth(auth))
 
@@ -59,7 +70,7 @@ func registerProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, pro
 			return
 		}
 		userID := c.MustGet(middleware.ContextUserIDKey).(uuid.UUID)
-		p, err := projects.Create(c.Request.Context(), userID, req.Name, req.Slug)
+		p, err := projects.Create(c.Request.Context(), userID, req.Name, req.Slug, req.EnvironmentTemplateKeys)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to create project"})
 			return
@@ -117,6 +128,98 @@ func registerProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, pro
 			out = append(out, dto.MemberDTO{UserID: m.UserID.String(), Email: m.Email, Name: m.Name, Role: string(m.Role)})
 		}
 		c.JSON(http.StatusOK, out)
+	})
+
+	scoped.GET("/access-groups", middleware.RequireProjectRole(resolver, constants.RoleViewer), func(c *gin.Context) {
+		if accessGroups == nil {
+			c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Error: "access groups are not configured"})
+			return
+		}
+		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
+		grants, err := accessGroups.ListProjectGrants(c.Request.Context(), projectID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to list project access groups"})
+			return
+		}
+		out := make([]dto.ProjectAccessGroupDTO, 0, len(grants))
+		for _, grant := range grants {
+			out = append(out, dto.ProjectAccessGroupDTO{GroupID: grant.GroupID.String(), Name: grant.Name, Description: grant.Description, Role: string(grant.Role)})
+		}
+		c.JSON(http.StatusOK, out)
+	})
+
+	scoped.POST("/access-groups", middleware.RequireProjectRole(resolver, constants.RoleAdmin), func(c *gin.Context) {
+		if accessGroups == nil {
+			c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Error: "access groups are not configured"})
+			return
+		}
+		var req dto.GrantProjectAccessGroupRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+			return
+		}
+		if !req.Role.Valid() || req.Role == constants.RoleOwner {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "invalid group role"})
+			return
+		}
+		groupID, _ := uuid.Parse(req.GroupID)
+		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
+		err := accessGroups.GrantProject(c.Request.Context(), projectID, groupID, req.Role)
+		switch {
+		case err == nil:
+			c.Status(http.StatusCreated)
+		case errors.Is(err, service.ErrGroupGrantExists):
+			c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "access group is already linked to this project"})
+		case errors.Is(err, repository.ErrNotFound):
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "access group not found"})
+		default:
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to link access group"})
+		}
+	})
+
+	scoped.PATCH("/access-groups/:groupID", middleware.RequireProjectRole(resolver, constants.RoleAdmin), func(c *gin.Context) {
+		if accessGroups == nil {
+			c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Error: "access groups are not configured"})
+			return
+		}
+		groupID, err := uuid.Parse(c.Param("groupID"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "invalid access group id"})
+			return
+		}
+		var req dto.UpdateProjectAccessGroupRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+			return
+		}
+		if !req.Role.Valid() || req.Role == constants.RoleOwner {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "invalid group role"})
+			return
+		}
+		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
+		if err := accessGroups.UpdateProjectGrant(c.Request.Context(), projectID, groupID, req.Role); err != nil {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to update access group"})
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+
+	scoped.DELETE("/access-groups/:groupID", middleware.RequireProjectRole(resolver, constants.RoleAdmin), func(c *gin.Context) {
+		if accessGroups == nil {
+			c.JSON(http.StatusNotImplemented, dto.ErrorResponse{Error: "access groups are not configured"})
+			return
+		}
+		groupID, err := uuid.Parse(c.Param("groupID"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "invalid access group id"})
+			return
+		}
+		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
+		if err := accessGroups.RevokeProjectGrant(c.Request.Context(), projectID, groupID); err != nil {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to unlink access group"})
+			return
+		}
+		c.Status(http.StatusNoContent)
 	})
 
 	scoped.POST("/members", middleware.RequireProjectRole(resolver, constants.RoleAdmin), func(c *gin.Context) {

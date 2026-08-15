@@ -19,13 +19,38 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+func (i *AuthIdentity) BeforeCreate(tx *gorm.DB) error {
+	generateID(&i.ID)
+	return nil
+}
+
 func (rt *RefreshToken) BeforeCreate(tx *gorm.DB) error {
 	generateID(&rt.ID)
 	return nil
 }
 
+func (g *AccessGroup) BeforeCreate(tx *gorm.DB) error {
+	generateID(&g.ID)
+	return nil
+}
+
 func (p *Project) BeforeCreate(tx *gorm.DB) error {
 	generateID(&p.ID)
+	return nil
+}
+
+func (e *Environment) BeforeCreate(tx *gorm.DB) error {
+	generateID(&e.ID)
+	return nil
+}
+
+func (t *EnvironmentTemplate) BeforeCreate(tx *gorm.DB) error {
+	generateID(&t.ID)
+	return nil
+}
+
+func (c *FlagEnvironmentConfig) BeforeCreate(tx *gorm.DB) error {
+	generateID(&c.ID)
 	return nil
 }
 

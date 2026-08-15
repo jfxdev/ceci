@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
 )
 
 var ErrParameterNotFound = errors.New("parameter not found")
@@ -21,12 +21,12 @@ func NewParameterService(params repository.ParameterRepository) *ParameterServic
 	return &ParameterService{params: params}
 }
 
-func (s *ParameterService) List(ctx context.Context, projectID uuid.UUID, prefix string) ([]model.Parameter, error) {
-	return s.params.List(ctx, projectID, prefix)
+func (s *ParameterService) List(ctx context.Context, projectID, environmentID uuid.UUID, prefix string) ([]model.Parameter, error) {
+	return s.params.List(ctx, projectID, environmentID, prefix)
 }
 
-func (s *ParameterService) Get(ctx context.Context, projectID uuid.UUID, key string) (*model.Parameter, error) {
-	p, err := s.params.Find(ctx, projectID, key)
+func (s *ParameterService) Get(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.Parameter, error) {
+	p, err := s.params.Find(ctx, projectID, environmentID, key)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrParameterNotFound
@@ -37,10 +37,10 @@ func (s *ParameterService) Get(ctx context.Context, projectID uuid.UUID, key str
 }
 
 // Upsert creates the parameter at version 1, or bumps the version on an existing one.
-func (s *ParameterService) Upsert(ctx context.Context, projectID uuid.UUID, key, value string, changedBy uuid.UUID) (*model.Parameter, error) {
+func (s *ParameterService) Upsert(ctx context.Context, projectID, environmentID uuid.UUID, key, value string, changedBy uuid.UUID) (*model.Parameter, error) {
 	changeType := "create"
 	version := 1
-	existing, err := s.params.Find(ctx, projectID, key)
+	existing, err := s.params.Find(ctx, projectID, environmentID, key)
 	if err == nil {
 		changeType = "update"
 		version = existing.Version + 1
@@ -49,11 +49,12 @@ func (s *ParameterService) Upsert(ctx context.Context, projectID uuid.UUID, key,
 	}
 
 	param := &model.Parameter{
-		ProjectID: projectID,
-		Key:       key,
-		Value:     value,
-		Version:   version,
-		UpdatedBy: changedBy,
+		ProjectID:     projectID,
+		EnvironmentID: environmentID,
+		Key:           key,
+		Value:         value,
+		Version:       version,
+		UpdatedBy:     changedBy,
 	}
 	if existing != nil {
 		param.ID = existing.ID
@@ -73,8 +74,8 @@ func (s *ParameterService) Upsert(ctx context.Context, projectID uuid.UUID, key,
 	return param, nil
 }
 
-func (s *ParameterService) Delete(ctx context.Context, projectID uuid.UUID, key string, deletedBy uuid.UUID) error {
-	existing, err := s.params.Find(ctx, projectID, key)
+func (s *ParameterService) Delete(ctx context.Context, projectID, environmentID uuid.UUID, key string, deletedBy uuid.UUID) error {
+	existing, err := s.params.Find(ctx, projectID, environmentID, key)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrParameterNotFound
@@ -88,15 +89,15 @@ func (s *ParameterService) Delete(ctx context.Context, projectID uuid.UUID, key 
 		ChangeType: "delete",
 		ChangedAt:  time.Now(),
 	}
-	err = s.params.Delete(ctx, projectID, key, versionRow)
+	err = s.params.Delete(ctx, projectID, environmentID, key, versionRow)
 	if errors.Is(err, repository.ErrNotFound) {
 		return ErrParameterNotFound
 	}
 	return err
 }
 
-func (s *ParameterService) ListVersions(ctx context.Context, projectID uuid.UUID, key string) ([]model.ParameterVersion, error) {
-	p, err := s.params.Find(ctx, projectID, key)
+func (s *ParameterService) ListVersions(ctx context.Context, projectID, environmentID uuid.UUID, key string) ([]model.ParameterVersion, error) {
+	p, err := s.params.Find(ctx, projectID, environmentID, key)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrParameterNotFound

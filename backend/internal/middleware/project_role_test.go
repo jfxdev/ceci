@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/repository"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/repository"
 )
 
 type fakeRoleResolver struct {

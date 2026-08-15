@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
-	"ceci/backend/internal/service"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
+	"leaflag/backend/internal/service"
 )
 
 type fakeProjectService struct {
@@ -45,7 +45,28 @@ type fakeProjectService struct {
 	removeMemberErr error
 }
 
-func (f *fakeProjectService) Create(ctx context.Context, creatorID uuid.UUID, name, slug string) (*model.Project, error) {
+type fakeProjectAccessGroupService struct {
+	grants    []repository.ProjectGroupGrant
+	listErr   error
+	grantErr  error
+	updateErr error
+	revokeErr error
+}
+
+func (f *fakeProjectAccessGroupService) ListProjectGrants(context.Context, uuid.UUID) ([]repository.ProjectGroupGrant, error) {
+	return f.grants, f.listErr
+}
+func (f *fakeProjectAccessGroupService) GrantProject(context.Context, uuid.UUID, uuid.UUID, constants.ProjectRole) error {
+	return f.grantErr
+}
+func (f *fakeProjectAccessGroupService) UpdateProjectGrant(context.Context, uuid.UUID, uuid.UUID, constants.ProjectRole) error {
+	return f.updateErr
+}
+func (f *fakeProjectAccessGroupService) RevokeProjectGrant(context.Context, uuid.UUID, uuid.UUID) error {
+	return f.revokeErr
+}
+
+func (f *fakeProjectService) Create(ctx context.Context, creatorID uuid.UUID, name, slug string, environmentTemplateKeys []string) (*model.Project, error) {
 	return f.createProject, f.createErr
 }
 func (f *fakeProjectService) Get(ctx context.Context, id uuid.UUID) (*model.Project, error) {
@@ -74,11 +95,11 @@ func (f *fakeProjectService) RemoveMember(ctx context.Context, projectID, userID
 	return f.removeMemberErr
 }
 
-func newProjectTestRouter(projects projectService, userID uuid.UUID) *gin.Engine {
+func newProjectTestRouter(projects projectService, userID uuid.UUID, groups ...projectAccessGroupService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	authFake := &fakeAuthService{parseUserID: userID}
-	registerProjectRoutes(&r.RouterGroup, authFake, projects)
+	registerProjectRoutes(&r.RouterGroup, authFake, projects, groups...)
 	return r
 }
 
@@ -262,4 +283,38 @@ func TestRemoveMemberRoute_Success(t *testing.T) {
 	r.ServeHTTP(w, authedRequest(http.MethodDelete, "/projects/"+uuid.New().String()+"/members/"+uuid.New().String(), nil))
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestProjectAccessGroupRoutes_ListAndRejectOwnerRole(t *testing.T) {
+	projectID := uuid.New()
+	groupID := uuid.New()
+	groups := &fakeProjectAccessGroupService{grants: []repository.ProjectGroupGrant{{GroupID: groupID, Name: "Payments editors", Role: constants.RoleEditor}}}
+	r := newProjectTestRouter(&fakeProjectService{role: constants.RoleAdmin}, uuid.New(), groups)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, authedRequest(http.MethodGet, "/projects/"+projectID.String()+"/access-groups", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Payments editors")
+	assert.Contains(t, w.Body.String(), "editor")
+
+	w = httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]string{"groupId": groupID.String(), "role": "owner"})
+	r.ServeHTTP(w, authedRequest(http.MethodPost, "/projects/"+projectID.String()+"/access-groups", body))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestProjectAccessGroupRoutes_ReturnConflictAndValidateGroupID(t *testing.T) {
+	projectID := uuid.New()
+	groups := &fakeProjectAccessGroupService{grantErr: service.ErrGroupGrantExists}
+	r := newProjectTestRouter(&fakeProjectService{role: constants.RoleAdmin}, uuid.New(), groups)
+
+	w := httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]string{"groupId": uuid.New().String(), "role": "viewer"})
+	r.ServeHTTP(w, authedRequest(http.MethodPost, "/projects/"+projectID.String()+"/access-groups", body))
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	w = httptest.NewRecorder()
+	body, _ = json.Marshal(map[string]string{"role": "viewer"})
+	r.ServeHTTP(w, authedRequest(http.MethodPatch, "/projects/"+projectID.String()+"/access-groups/not-a-uuid", body))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

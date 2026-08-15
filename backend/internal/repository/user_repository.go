@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/model"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -17,9 +17,16 @@ type UserRepository interface {
 	Create(ctx context.Context, u *model.User) error
 	FindByEmail(ctx context.Context, email string) (*model.User, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*model.User, error)
+	FindIdentity(ctx context.Context, provider, subject string) (*model.AuthIdentity, error)
+	CreateIdentity(ctx context.Context, identity *model.AuthIdentity) error
+	SetAdmin(ctx context.Context, id uuid.UUID, isAdmin bool) error
 	CreateRefreshToken(ctx context.Context, rt *model.RefreshToken) error
 	FindRefreshToken(ctx context.Context, tokenHash string) (*model.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
+}
+
+func (r *postgresUserRepository) SetAdmin(ctx context.Context, id uuid.UUID, isAdmin bool) error {
+	return r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Update("is_admin", isAdmin).Error
 }
 
 type postgresUserRepository struct {
@@ -54,6 +61,21 @@ func (r *postgresUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*m
 		return nil, err
 	}
 	return &u, nil
+}
+
+func (r *postgresUserRepository) FindIdentity(ctx context.Context, provider, subject string) (*model.AuthIdentity, error) {
+	var identity model.AuthIdentity
+	if err := r.db.WithContext(ctx).Where("provider = ? AND subject = ?", provider, subject).First(&identity).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &identity, nil
+}
+
+func (r *postgresUserRepository) CreateIdentity(ctx context.Context, identity *model.AuthIdentity) error {
+	return r.db.WithContext(ctx).Create(identity).Error
 }
 
 func (r *postgresUserRepository) CreateRefreshToken(ctx context.Context, rt *model.RefreshToken) error {

@@ -8,14 +8,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
 )
 
 type fakeUserRepository struct {
 	usersByEmail map[string]*model.User
 	usersByID    map[uuid.UUID]*model.User
 	tokens       map[string]*model.RefreshToken
+	identities   map[string]*model.AuthIdentity
 }
 
 func newFakeUserRepository() *fakeUserRepository {
@@ -23,7 +24,26 @@ func newFakeUserRepository() *fakeUserRepository {
 		usersByEmail: map[string]*model.User{},
 		usersByID:    map[uuid.UUID]*model.User{},
 		tokens:       map[string]*model.RefreshToken{},
+		identities:   map[string]*model.AuthIdentity{},
 	}
+}
+
+func identityKey(provider, subject string) string { return provider + "|" + subject }
+
+func (f *fakeUserRepository) FindIdentity(ctx context.Context, provider, subject string) (*model.AuthIdentity, error) {
+	identity, ok := f.identities[identityKey(provider, subject)]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	return identity, nil
+}
+
+func (f *fakeUserRepository) CreateIdentity(ctx context.Context, identity *model.AuthIdentity) error {
+	if identity.ID == uuid.Nil {
+		identity.ID = uuid.New()
+	}
+	f.identities[identityKey(identity.Provider, identity.Subject)] = identity
+	return nil
 }
 
 func (f *fakeUserRepository) Create(ctx context.Context, u *model.User) error {
@@ -49,6 +69,15 @@ func (f *fakeUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*model
 		return nil, repository.ErrNotFound
 	}
 	return u, nil
+}
+
+func (f *fakeUserRepository) SetAdmin(ctx context.Context, id uuid.UUID, isAdmin bool) error {
+	u, ok := f.usersByID[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	u.IsAdmin = isAdmin
+	return nil
 }
 
 func (f *fakeUserRepository) CreateRefreshToken(ctx context.Context, rt *model.RefreshToken) error {
@@ -131,6 +160,35 @@ func TestAuthService_RegisterLoginRefreshLogout(t *testing.T) {
 	fetched, err := auth.Me(ctx, user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "a@b.com", fetched.Email)
+}
+
+func TestAuthService_LoginOIDC_CreatesIdentityAndProtectsBootstrapAdmin(t *testing.T) {
+	repo := newFakeUserRepository()
+	auth := NewAuthService(repo, "test-secret")
+	ctx := context.Background()
+	user, err := auth.LoginOIDC(ctx, "oidc", "subject-1", "ana@example.com", "Ana", true)
+	require.NoError(t, err)
+	assert.Equal(t, "ana@example.com", user.Email)
+	assert.Empty(t, user.PasswordHash)
+	_, err = auth.LoginOIDC(ctx, "oidc", "subject-1", "changed@example.com", "Ana Updated", true)
+	require.NoError(t, err, "stable provider subject must resolve the original user")
+
+	bootstrap := &model.User{Email: "admin@example.com", IsBootstrapAdmin: true}
+	require.NoError(t, repo.Create(ctx, bootstrap))
+	_, err = auth.LoginOIDC(ctx, "oidc", "bootstrap-subject", bootstrap.Email, "Admin", true)
+	assert.ErrorIs(t, err, ErrBootstrapAdminSSO)
+}
+
+func TestAuthService_LoginOIDC_RejectsLocalCollisionAndDisabledJIT(t *testing.T) {
+	repo := newFakeUserRepository()
+	auth := NewAuthService(repo, "test-secret")
+	ctx := context.Background()
+	local := &model.User{Email: "local@example.com", PasswordHash: "hash"}
+	require.NoError(t, repo.Create(ctx, local))
+	_, err := auth.LoginOIDC(ctx, "oidc", "subject-local", local.Email, "Local", true)
+	assert.ErrorIs(t, err, ErrFederatedEmailUsed)
+	_, err = auth.LoginOIDC(ctx, "oidc", "subject-new", "new@example.com", "New", false)
+	assert.ErrorIs(t, err, ErrJITDisabled)
 }
 
 func TestAuthService_Register_EmailTaken(t *testing.T) {

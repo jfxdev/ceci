@@ -14,10 +14,10 @@ RUN go mod download
 COPY backend/ ./
 RUN rm -rf internal/web/dist
 COPY --from=frontend-build /app/frontend/dist ./internal/web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -o /ceci ./cmd/ceci
+RUN CGO_ENABLED=0 GOOS=linux go build -o /leaflag ./cmd/leaflag
 
 # ---- stage 3: final ----
 FROM gcr.io/distroless/static-debian12
-COPY --from=backend-build /ceci /ceci
+COPY --from=backend-build /leaflag /leaflag
 EXPOSE 8110
-ENTRYPOINT ["/ceci"]
+ENTRYPOINT ["/leaflag"]

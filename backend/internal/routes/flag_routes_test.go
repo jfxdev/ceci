@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/service"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/service"
 )
 
 type fakeFlagService struct {
@@ -25,7 +25,7 @@ type fakeFlagService struct {
 	get    *model.FeatureFlag
 	getErr error
 
-	created *model.FeatureFlag
+	created   *model.FeatureFlag
 	createErr error
 
 	updated   *model.FeatureFlag
@@ -34,16 +34,16 @@ type fakeFlagService struct {
 	deleteErr error
 }
 
-func (f *fakeFlagService) List(ctx context.Context, projectID uuid.UUID) ([]model.FeatureFlag, error) {
+func (f *fakeFlagService) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error) {
 	return f.list, f.listErr
 }
-func (f *fakeFlagService) Get(ctx context.Context, projectID uuid.UUID, key string) (*model.FeatureFlag, error) {
+func (f *fakeFlagService) Get(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error) {
 	return f.get, f.getErr
 }
-func (f *fakeFlagService) Create(ctx context.Context, projectID uuid.UUID, key, name, description, flagType, defaultVariant string, variants []service.VariantInput, rules []service.RuleInput) (*model.FeatureFlag, error) {
+func (f *fakeFlagService) Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType, defaultVariant string, enabled bool, variants []service.VariantInput, rules []service.RuleInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error) {
 	return f.created, f.createErr
 }
-func (f *fakeFlagService) Update(ctx context.Context, projectID uuid.UUID, key string, in service.UpdateInput) (*model.FeatureFlag, error) {
+func (f *fakeFlagService) Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in service.UpdateInput) (*model.FeatureFlag, error) {
 	return f.updated, f.updateErr
 }
 func (f *fakeFlagService) Delete(ctx context.Context, projectID uuid.UUID, key string) error {
@@ -55,16 +55,20 @@ func newFlagTestRouter(flags flagService, role constants.ProjectRole) *gin.Engin
 	r := gin.New()
 	authFake := &fakeAuthService{parseUserID: uuid.New()}
 	resolver := fakeRoleResolver{role: role}
-	registerFlagRoutes(&r.RouterGroup, authFake, resolver, flags)
+	registerFlagRoutes(&r.RouterGroup, authFake, resolver, fakeEnvResolver{}, flags)
 	return r
 }
 
 func sampleFlag() *model.FeatureFlag {
 	return &model.FeatureFlag{
 		ID: uuid.New(), Key: "new-checkout", Name: "New checkout", FlagType: "boolean",
-		Enabled: true, DefaultVariant: "off",
+		Configs:  []model.FlagEnvironmentConfig{{Enabled: true, DefaultVariant: "off"}},
 		Variants: []model.FlagVariant{{Key: "off", Value: datatypes.JSON(`false`)}},
 	}
+}
+
+func flagsPath(projectID, suffix string) string {
+	return "/projects/" + projectID + "/environments/production/flags" + suffix
 }
 
 func TestListFlagsRoute(t *testing.T) {
@@ -72,7 +76,7 @@ func TestListFlagsRoute(t *testing.T) {
 	r := newFlagTestRouter(fake, constants.RoleViewer)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodGet, "/projects/"+uuid.New().String()+"/flags", nil))
+	r.ServeHTTP(w, authedRequest(http.MethodGet, flagsPath(uuid.New().String(), ""), nil))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "new-checkout")
@@ -83,7 +87,7 @@ func TestCreateFlagRoute_Forbidden(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]any{"key": "f1", "flagType": "boolean", "defaultVariant": "off", "variants": []map[string]any{{"key": "off", "value": false}}})
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodPost, "/projects/"+uuid.New().String()+"/flags", body))
+	r.ServeHTTP(w, authedRequest(http.MethodPost, flagsPath(uuid.New().String(), ""), body))
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
@@ -94,7 +98,7 @@ func TestCreateFlagRoute_Success(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]any{"key": "new-checkout", "flagType": "boolean", "defaultVariant": "off", "variants": []map[string]any{{"key": "off", "value": false}}})
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodPost, "/projects/"+uuid.New().String()+"/flags", body))
+	r.ServeHTTP(w, authedRequest(http.MethodPost, flagsPath(uuid.New().String(), ""), body))
 
 	require.Equal(t, http.StatusCreated, w.Code)
 	assert.Contains(t, w.Body.String(), "new-checkout")
@@ -104,7 +108,7 @@ func TestCreateFlagRoute_BadRequest(t *testing.T) {
 	r := newFlagTestRouter(&fakeFlagService{}, constants.RoleEditor)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodPost, "/projects/"+uuid.New().String()+"/flags", []byte(`{}`)))
+	r.ServeHTTP(w, authedRequest(http.MethodPost, flagsPath(uuid.New().String(), ""), []byte(`{}`)))
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -113,20 +117,20 @@ func TestGetFlagRoute_NotFound(t *testing.T) {
 	r := newFlagTestRouter(&fakeFlagService{getErr: service.ErrFlagNotFound}, constants.RoleViewer)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodGet, "/projects/"+uuid.New().String()+"/flags/missing", nil))
+	r.ServeHTTP(w, authedRequest(http.MethodGet, flagsPath(uuid.New().String(), "/missing"), nil))
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestUpdateFlagRoute_KillSwitch(t *testing.T) {
 	disabled := sampleFlag()
-	disabled.Enabled = false
+	disabled.Configs = []model.FlagEnvironmentConfig{{Enabled: false, DefaultVariant: "off"}}
 	fake := &fakeFlagService{updated: disabled}
 	r := newFlagTestRouter(fake, constants.RoleEditor)
 
 	body, _ := json.Marshal(map[string]any{"enabled": false})
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodPatch, "/projects/"+uuid.New().String()+"/flags/new-checkout", body))
+	r.ServeHTTP(w, authedRequest(http.MethodPatch, flagsPath(uuid.New().String(), "/new-checkout"), body))
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), `"enabled":false`)
@@ -138,7 +142,7 @@ func TestUpdateFlagRoute_NotFound(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]any{"enabled": false})
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodPatch, "/projects/"+uuid.New().String()+"/flags/missing", body))
+	r.ServeHTTP(w, authedRequest(http.MethodPatch, flagsPath(uuid.New().String(), "/missing"), body))
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
@@ -147,7 +151,7 @@ func TestDeleteFlagRoute(t *testing.T) {
 	r := newFlagTestRouter(&fakeFlagService{}, constants.RoleAdmin)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodDelete, "/projects/"+uuid.New().String()+"/flags/new-checkout", nil))
+	r.ServeHTTP(w, authedRequest(http.MethodDelete, flagsPath(uuid.New().String(), "/new-checkout"), nil))
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
 }
@@ -156,7 +160,7 @@ func TestDeleteFlagRoute_Forbidden(t *testing.T) {
 	r := newFlagTestRouter(&fakeFlagService{}, constants.RoleEditor)
 
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, authedRequest(http.MethodDelete, "/projects/"+uuid.New().String()+"/flags/new-checkout", nil))
+	r.ServeHTTP(w, authedRequest(http.MethodDelete, flagsPath(uuid.New().String(), "/new-checkout"), nil))
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }

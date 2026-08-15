@@ -7,14 +7,14 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/model"
 )
 
 type ParameterRepository interface {
-	List(ctx context.Context, projectID uuid.UUID, prefix string) ([]model.Parameter, error)
-	Find(ctx context.Context, projectID uuid.UUID, key string) (*model.Parameter, error)
+	List(ctx context.Context, projectID, environmentID uuid.UUID, prefix string) ([]model.Parameter, error)
+	Find(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.Parameter, error)
 	Upsert(ctx context.Context, param *model.Parameter, version *model.ParameterVersion) error
-	Delete(ctx context.Context, projectID uuid.UUID, key string, version *model.ParameterVersion) error
+	Delete(ctx context.Context, projectID, environmentID uuid.UUID, key string, version *model.ParameterVersion) error
 	ListVersions(ctx context.Context, parameterID uuid.UUID) ([]model.ParameterVersion, error)
 }
 
@@ -26,8 +26,8 @@ func NewParameterRepository(db *gorm.DB) ParameterRepository {
 	return &postgresParameterRepository{db: db}
 }
 
-func (r *postgresParameterRepository) List(ctx context.Context, projectID uuid.UUID, prefix string) ([]model.Parameter, error) {
-	q := r.db.WithContext(ctx).Where("project_id = ?", projectID)
+func (r *postgresParameterRepository) List(ctx context.Context, projectID, environmentID uuid.UUID, prefix string) ([]model.Parameter, error) {
+	q := r.db.WithContext(ctx).Where("project_id = ? AND environment_id = ?", projectID, environmentID)
 	if prefix != "" {
 		q = q.Where("key LIKE ?", prefix+"%")
 	}
@@ -36,9 +36,9 @@ func (r *postgresParameterRepository) List(ctx context.Context, projectID uuid.U
 	return params, err
 }
 
-func (r *postgresParameterRepository) Find(ctx context.Context, projectID uuid.UUID, key string) (*model.Parameter, error) {
+func (r *postgresParameterRepository) Find(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.Parameter, error) {
 	var p model.Parameter
-	err := r.db.WithContext(ctx).Where("project_id = ? AND key = ?", projectID, key).First(&p).Error
+	err := r.db.WithContext(ctx).Where("project_id = ? AND environment_id = ? AND key = ?", projectID, environmentID, key).First(&p).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
@@ -59,10 +59,10 @@ func (r *postgresParameterRepository) Upsert(ctx context.Context, param *model.P
 	})
 }
 
-func (r *postgresParameterRepository) Delete(ctx context.Context, projectID uuid.UUID, key string, version *model.ParameterVersion) error {
+func (r *postgresParameterRepository) Delete(ctx context.Context, projectID, environmentID uuid.UUID, key string, version *model.ParameterVersion) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var p model.Parameter
-		if err := tx.Where("project_id = ? AND key = ?", projectID, key).First(&p).Error; err != nil {
+		if err := tx.Where("project_id = ? AND environment_id = ? AND key = ?", projectID, environmentID, key).First(&p).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrNotFound
 			}

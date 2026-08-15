@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/repository"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
 )
 
 type fakeProjectRepository struct {
@@ -98,14 +98,128 @@ func (f *fakeProjectRepository) ListMembers(ctx context.Context, projectID uuid.
 	return out, nil
 }
 
+type fakeEnvironmentRepository struct {
+	envs map[uuid.UUID]*model.Environment
+}
+
+type fakeEnvironmentTemplateRepository struct {
+	templates map[uuid.UUID]*model.EnvironmentTemplate
+}
+
+func newFakeEnvironmentTemplateRepository() *fakeEnvironmentTemplateRepository {
+	return &fakeEnvironmentTemplateRepository{templates: map[uuid.UUID]*model.EnvironmentTemplate{}}
+}
+
+func (f *fakeEnvironmentTemplateRepository) Create(ctx context.Context, template *model.EnvironmentTemplate) error {
+	if template.ID == uuid.Nil {
+		template.ID = uuid.New()
+	}
+	f.templates[template.ID] = template
+	return nil
+}
+
+func (f *fakeEnvironmentTemplateRepository) List(ctx context.Context) ([]model.EnvironmentTemplate, error) {
+	out := make([]model.EnvironmentTemplate, 0, len(f.templates))
+	for _, template := range f.templates {
+		out = append(out, *template)
+	}
+	return out, nil
+}
+
+func (f *fakeEnvironmentTemplateRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.EnvironmentTemplate, error) {
+	template, ok := f.templates[id]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	return template, nil
+}
+
+func (f *fakeEnvironmentTemplateRepository) FindByKey(ctx context.Context, key string) (*model.EnvironmentTemplate, error) {
+	for _, template := range f.templates {
+		if template.Key == key {
+			return template, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (f *fakeEnvironmentTemplateRepository) Update(ctx context.Context, template *model.EnvironmentTemplate) error {
+	f.templates[template.ID] = template
+	return nil
+}
+
+func (f *fakeEnvironmentTemplateRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	delete(f.templates, id)
+	return nil
+}
+
+func newFakeEnvironmentRepository() *fakeEnvironmentRepository {
+	return &fakeEnvironmentRepository{envs: map[uuid.UUID]*model.Environment{}}
+}
+
+func (f *fakeEnvironmentRepository) Create(ctx context.Context, env *model.Environment) error {
+	if env.ID == uuid.Nil {
+		env.ID = uuid.New()
+	}
+	f.envs[env.ID] = env
+	return nil
+}
+
+func (f *fakeEnvironmentRepository) List(ctx context.Context, projectID uuid.UUID) ([]model.Environment, error) {
+	var out []model.Environment
+	for _, e := range f.envs {
+		if e.ProjectID == projectID {
+			out = append(out, *e)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeEnvironmentRepository) FindByKey(ctx context.Context, projectID uuid.UUID, key string) (*model.Environment, error) {
+	for _, e := range f.envs {
+		if e.ProjectID == projectID && e.Key == key {
+			return e, nil
+		}
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (f *fakeEnvironmentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Environment, error) {
+	e, ok := f.envs[id]
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	return e, nil
+}
+
+func (f *fakeEnvironmentRepository) Update(ctx context.Context, env *model.Environment) error {
+	f.envs[env.ID] = env
+	return nil
+}
+
+func (f *fakeEnvironmentRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	delete(f.envs, id)
+	return nil
+}
+
+func (f *fakeEnvironmentRepository) Count(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	var count int64
+	for _, e := range f.envs {
+		if e.ProjectID == projectID {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func TestProjectService_CreateAddsOwner(t *testing.T) {
 	projRepo := newFakeProjectRepository()
 	userRepo := newFakeUserRepository()
-	svc := NewProjectService(projRepo, userRepo)
+	svc := NewProjectService(projRepo, userRepo, newFakeEnvironmentRepository(), newFakeEnvironmentTemplateRepository())
 	ctx := context.Background()
 
 	creator := uuid.New()
-	p, err := svc.Create(ctx, creator, "Alpha", "alpha")
+	p, err := svc.Create(ctx, creator, "Alpha", "alpha", nil)
 	require.NoError(t, err)
 
 	role, err := svc.RoleOf(ctx, p.ID, creator)
@@ -113,8 +227,28 @@ func TestProjectService_CreateAddsOwner(t *testing.T) {
 	assert.Equal(t, constants.RoleOwner, role)
 }
 
+func TestProjectService_CreateAppliesRequiredEnvironmentTemplates(t *testing.T) {
+	projectRepo := newFakeProjectRepository()
+	environmentRepo := newFakeEnvironmentRepository()
+	templateRepo := newFakeEnvironmentTemplateRepository()
+	require.NoError(t, templateRepo.Create(context.Background(), &model.EnvironmentTemplate{Key: "production", Name: "Production", IsRequired: true}))
+	require.NoError(t, templateRepo.Create(context.Background(), &model.EnvironmentTemplate{Key: "staging", Name: "Staging"}))
+	svc := NewProjectService(projectRepo, newFakeUserRepository(), environmentRepo, templateRepo)
+
+	project, err := svc.Create(context.Background(), uuid.New(), "Alpha", "alpha", []string{"staging"})
+	require.NoError(t, err)
+	environments, err := environmentRepo.List(context.Background(), project.ID)
+	require.NoError(t, err)
+
+	keys := map[string]bool{}
+	for _, environment := range environments {
+		keys[environment.Key] = true
+	}
+	assert.Equal(t, map[string]bool{"all": true, "production": true, "staging": true}, keys)
+}
+
 func TestProjectService_RoleOf_NotMember(t *testing.T) {
-	svc := NewProjectService(newFakeProjectRepository(), newFakeUserRepository())
+	svc := NewProjectService(newFakeProjectRepository(), newFakeUserRepository(), newFakeEnvironmentRepository(), newFakeEnvironmentTemplateRepository())
 	_, err := svc.RoleOf(context.Background(), uuid.New(), uuid.New())
 	assert.ErrorIs(t, err, ErrMemberNotFound)
 }
@@ -122,10 +256,10 @@ func TestProjectService_RoleOf_NotMember(t *testing.T) {
 func TestProjectService_AddMember(t *testing.T) {
 	projRepo := newFakeProjectRepository()
 	userRepo := newFakeUserRepository()
-	svc := NewProjectService(projRepo, userRepo)
+	svc := NewProjectService(projRepo, userRepo, newFakeEnvironmentRepository(), newFakeEnvironmentTemplateRepository())
 	ctx := context.Background()
 
-	target, err := svc.Create(ctx, uuid.New(), "Alpha", "alpha")
+	target, err := svc.Create(ctx, uuid.New(), "Alpha", "alpha", nil)
 	require.NoError(t, err)
 
 	member := &model.User{ID: uuid.New(), Email: "m@b.com"}
@@ -141,10 +275,10 @@ func TestProjectService_AddMember(t *testing.T) {
 }
 
 func TestProjectService_UpdateAndDelete(t *testing.T) {
-	svc := NewProjectService(newFakeProjectRepository(), newFakeUserRepository())
+	svc := NewProjectService(newFakeProjectRepository(), newFakeUserRepository(), newFakeEnvironmentRepository(), newFakeEnvironmentTemplateRepository())
 	ctx := context.Background()
 
-	p, err := svc.Create(ctx, uuid.New(), "Alpha", "alpha")
+	p, err := svc.Create(ctx, uuid.New(), "Alpha", "alpha", nil)
 	require.NoError(t, err)
 
 	updated, err := svc.Update(ctx, p.ID, "Beta")
@@ -159,11 +293,11 @@ func TestProjectService_UpdateAndDelete(t *testing.T) {
 func TestProjectService_RemoveAndUpdateMemberRole(t *testing.T) {
 	projRepo := newFakeProjectRepository()
 	userRepo := newFakeUserRepository()
-	svc := NewProjectService(projRepo, userRepo)
+	svc := NewProjectService(projRepo, userRepo, newFakeEnvironmentRepository(), newFakeEnvironmentTemplateRepository())
 	ctx := context.Background()
 
 	creator := uuid.New()
-	p, err := svc.Create(ctx, creator, "Alpha", "alpha")
+	p, err := svc.Create(ctx, creator, "Alpha", "alpha", nil)
 	require.NoError(t, err)
 
 	require.NoError(t, svc.UpdateMemberRole(ctx, p.ID, creator, constants.RoleAdmin))

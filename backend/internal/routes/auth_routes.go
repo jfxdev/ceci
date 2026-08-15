@@ -8,11 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/dto"
-	"ceci/backend/internal/middleware"
-	"ceci/backend/internal/model"
-	"ceci/backend/internal/service"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/dto"
+	"leaflag/backend/internal/middleware"
+	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/service"
 )
 
 // authService is the subset of AuthService behavior routes depend on, kept as
@@ -47,7 +47,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 		setRefreshCookie(c, refreshToken)
 		c.JSON(http.StatusOK, dto.LoginResponse{
 			AccessToken: accessToken,
-			User:        dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name},
+			User:        toUserDTO(user),
 		})
 	})
 
@@ -75,7 +75,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 		setRefreshCookie(c, refreshToken)
 		c.JSON(http.StatusCreated, dto.LoginResponse{
 			AccessToken: accessToken,
-			User:        dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name},
+			User:        toUserDTO(user),
 		})
 	})
 
@@ -110,11 +110,23 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "user not found"})
 			return
 		}
-		c.JSON(http.StatusOK, dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name})
+		c.JSON(http.StatusOK, toUserDTO(user))
 	})
+}
+
+func toUserDTO(user *model.User) dto.UserDTO {
+	return dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name, IsAdmin: user.IsAdmin}
 }
 
 func setRefreshCookie(c *gin.Context, token string) {
 	maxAge := int(constants.RefreshTokenTTL.Seconds())
-	c.SetCookie(constants.RefreshCookieName, token, maxAge, "/", "", false, true)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     constants.RefreshCookieName,
+		Value:    token,
+		MaxAge:   maxAge,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsSecure(c),
+	})
 }

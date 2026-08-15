@@ -8,15 +8,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/model"
 )
 
 func TestAPIKeyRepository_CreateFindListRevoke(t *testing.T) {
 	repo := NewAPIKeyRepository(newTestDB(t))
 	ctx := context.Background()
 	projectID := uuid.New()
+	envID := uuid.New()
 
-	key := &model.ProjectAPIKey{ProjectID: projectID, Label: "CI", KeyHash: "hash1", Prefix: "ceci_sk_ab"}
+	key := &model.ProjectAPIKey{ProjectID: projectID, EnvironmentID: envID, Label: "CI", KeyHash: "hash1", Prefix: "leaflag_sk_ab"}
 	require.NoError(t, repo.Create(ctx, key))
 	require.NotEqual(t, uuid.Nil, key.ID)
 
@@ -24,7 +25,7 @@ func TestAPIKeyRepository_CreateFindListRevoke(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, projectID, found.ProjectID)
 
-	list, err := repo.List(ctx, projectID)
+	list, err := repo.List(ctx, projectID, envID)
 	require.NoError(t, err)
 	assert.Len(t, list, 1)
 

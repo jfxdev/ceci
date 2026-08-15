@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"ceci/backend/internal/constants"
-	"ceci/backend/internal/dto"
+	"leaflag/backend/internal/constants"
+	"leaflag/backend/internal/dto"
 )
 
 const ContextProjectIDKey = "projectID"

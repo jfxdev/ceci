@@ -7,14 +7,15 @@ import (
 	"flag"
 	"log"
 
-	"ceci/backend/internal/config"
-	"ceci/backend/internal/db"
-	"ceci/backend/internal/repository"
-	"ceci/backend/internal/service"
+	"leaflag/backend/internal/config"
+	"leaflag/backend/internal/db"
+	"leaflag/backend/internal/repository"
+	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/model"
 )
 
 func main() {
-	email := flag.String("email", "admin@ceci.local", "seed user email")
+	email := flag.String("email", "admin@leaflag.local", "seed user email")
 	password := flag.String("password", "admin123", "seed user password")
 	name := flag.String("name", "Admin", "seed user name")
 	flag.Parse()
@@ -31,13 +32,29 @@ func main() {
 	userRepo := repository.NewUserRepository(gdb)
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
 
-	if _, err := userRepo.FindByEmail(context.Background(), *email); err == nil {
-		log.Printf("user %s already exists, nothing to do", *email)
+	if user, err := userRepo.FindByEmail(context.Background(), *email); err == nil {
+		if err := userRepo.SetAdmin(context.Background(), user.ID, true); err != nil {
+			log.Fatalf("failed to grant admin access: %v", err)
+		}
+		if err := gdb.WithContext(context.Background()).Model(&model.User{}).Where("id = ?", user.ID).Update("is_bootstrap_admin", true).Error; err != nil {
+			log.Fatalf("failed to preserve bootstrap admin status: %v", err)
+		}
+		log.Printf("user %s already exists and has admin access", *email)
 		return
 	}
 
 	if _, err := authService.Register(context.Background(), *email, *password, *name); err != nil {
 		log.Fatalf("failed to create seed user: %v", err)
+	}
+	user, err := userRepo.FindByEmail(context.Background(), *email)
+	if err != nil {
+		log.Fatalf("failed to look up seeded user: %v", err)
+	}
+	if err := userRepo.SetAdmin(context.Background(), user.ID, true); err != nil {
+		log.Fatalf("failed to grant admin access: %v", err)
+	}
+	if err := gdb.WithContext(context.Background()).Model(&model.User{}).Where("id = ?", user.ID).Update("is_bootstrap_admin", true).Error; err != nil {
+		log.Fatalf("failed to mark bootstrap admin: %v", err)
 	}
 	log.Printf("created user %s / %s", *email, *password)
 }

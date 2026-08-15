@@ -2,9 +2,9 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/ceci ./cmd/ceci"
-bin = "./tmp/ceci"
-full_bin = "./tmp/ceci"
+cmd = "go build -o ./tmp/leaflag ./cmd/leaflag"
+bin = "./tmp/leaflag"
+full_bin = "./tmp/leaflag"
 include_ext = ["go"]
 exclude_dir = ["tmp", "vendor"]
 delay = 200

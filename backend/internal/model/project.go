@@ -3,8 +3,8 @@ package model
 import (
 	"time"
 
+	"leaflag/backend/internal/constants"
 	"github.com/google/uuid"
-	"ceci/backend/internal/constants"
 )
 
 type Project struct {
@@ -23,11 +23,12 @@ type ProjectMember struct {
 }
 
 type ProjectAPIKey struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	ProjectID uuid.UUID `gorm:"type:uuid;index;not null"`
-	Label     string
-	KeyHash   string `gorm:"uniqueIndex;not null"`
-	Prefix    string
-	CreatedAt time.Time
-	RevokedAt *time.Time
+	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
+	ProjectID     uuid.UUID `gorm:"type:uuid;index;not null"`
+	EnvironmentID uuid.UUID `gorm:"type:uuid;index;not null"`
+	Label         string
+	KeyHash       string `gorm:"uniqueIndex;not null"`
+	Prefix        string
+	CreatedAt     time.Time
+	RevokedAt     *time.Time
 }

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"ceci/backend/internal/model"
+	"leaflag/backend/internal/model"
 )
 
 // newTestDB spins up an in-memory sqlite database for repository tests.
@@ -25,12 +25,21 @@ func newTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.AutoMigrate(
 		&model.User{},
+		&model.AuthIdentity{},
 		&model.RefreshToken{},
+		&model.AccessGroup{},
+		&model.AccessGroupMember{},
+		&model.OIDCAccessGroupMapping{},
+		&model.ProjectAccessGroup{},
+		&model.InstanceSettings{},
 		&model.Project{},
 		&model.ProjectMember{},
+		&model.Environment{},
+		&model.EnvironmentTemplate{},
 		&model.ProjectAPIKey{},
 		&model.FeatureFlag{},
 		&model.FlagVariant{},
+		&model.FlagEnvironmentConfig{},
 		&model.FlagRule{},
 		&model.Parameter{},
 		&model.ParameterVersion{},

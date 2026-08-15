@@ -28,10 +28,10 @@ build:
 	cd frontend && npm run build
 	rm -rf backend/internal/web/dist
 	cp -r frontend/dist backend/internal/web/dist
-	cd backend && go build -o ../bin/ceci ./cmd/ceci
+	cd backend && go build -o ../bin/leaflag ./cmd/leaflag
 
 docker-build:
-	docker build -t ceci:latest .
+	docker build -t leaflag:latest .
 
-seed:
-	cd backend && go run ./cmd/seed
+seed: ## Cria ou promove admin@leaflag.local a administrador (EMAIL, PASSWORD e NAME são opcionais)
+	cd backend && go run ./cmd/seed --email "$${EMAIL:-admin@leaflag.local}" --password "$${PASSWORD:-admin123}" --name "$${NAME:-Admin}"
