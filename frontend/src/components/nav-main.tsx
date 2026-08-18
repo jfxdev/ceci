@@ -1,5 +1,5 @@
 import { NavLink, useParams } from "react-router-dom"
-import { LayoutDashboard, Flag, KeyRound, Users, Settings, FolderKanban, FlaskConical, Boxes, ShieldCheck, UsersRound, type LucideIcon } from "lucide-react"
+import { LayoutDashboard, Flag, KeyRound, Users, Settings, FolderKanban, FlaskConical, Boxes, ShieldCheck, UsersRound, Braces, type LucideIcon } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 
 import {
@@ -27,6 +27,7 @@ export function NavMain() {
     { title: "Parameters", path: `/projects/${projectId}/parameters`, icon: KeyRound },
     { title: "Playground", path: `/projects/${projectId}/playground`, icon: FlaskConical },
     { title: "Environments", path: `/projects/${projectId}/environments`, icon: Boxes },
+    { title: "Contexts", path: `/projects/${projectId}/contexts`, icon: Braces },
     { title: "Members", path: `/projects/${projectId}/members`, icon: Users },
     { title: "Settings", path: `/projects/${projectId}/settings`, icon: Settings },
   ] : []

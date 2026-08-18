@@ -16,41 +16,57 @@ type FeatureFlag struct {
 	FlagType            string `gorm:"not null"`
 	PrerequisiteFlagKey string
 	PrerequisiteVariant string
-	Variants            []FlagVariant           `gorm:"foreignKey:FlagID"`
 	Configs             []FlagEnvironmentConfig `gorm:"foreignKey:FlagID"`
-	Rules               []FlagRule              `gorm:"foreignKey:FlagID"`
+	Strategies          []FlagStrategy          `gorm:"foreignKey:FlagID"`
+	ArchivedAt          *time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
 
-type FlagVariant struct {
-	ID     uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	FlagID uuid.UUID      `gorm:"type:uuid;index;not null"`
-	Key    string         `gorm:"not null"`
-	Value  datatypes.JSON `gorm:"not null"`
-}
-
-// FlagEnvironmentConfig holds the parts of a flag's behavior that vary per
-// environment: whether it's on, and which variant it falls back to. At most
-// one row exists per (FlagID, EnvironmentID) pair; an environment with no
-// row for a flag is treated as disabled (see flag_evaluate.go).
+// FlagEnvironmentConfig holds the one part of a flag's behavior that's purely
+// per-environment: the kill switch. At most one row exists per (FlagID,
+// EnvironmentID) pair; an environment with no row for a flag is treated as
+// disabled — new environments start every flag off until explicitly
+// configured (see toEnvFlag in flag_evaluate.go).
 type FlagEnvironmentConfig struct {
-	ID             uuid.UUID `gorm:"type:uuid;primaryKey"`
-	FlagID         uuid.UUID `gorm:"type:uuid;index:idx_flagcfg_flag_env,unique;not null"`
-	EnvironmentID  uuid.UUID `gorm:"type:uuid;index:idx_flagcfg_flag_env,unique;not null"`
-	Enabled        bool      `gorm:"not null;default:true"`
-	DefaultVariant string    `gorm:"not null"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
+	FlagID        uuid.UUID `gorm:"type:uuid;index:idx_flagcfg_flag_env,unique;not null"`
+	EnvironmentID uuid.UUID `gorm:"type:uuid;index:idx_flagcfg_flag_env,unique;not null"`
+	Enabled       bool      `gorm:"not null;default:true"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
-type FlagRule struct {
+// FlagStrategy is one targeting strategy within a flag, scoped to a single
+// environment. A flag+environment holds an ordered list of strategies; at
+// eval time (see evaluateFlag in flag_evaluate.go) the first strategy whose
+// ConditionJSON matches the context wins, applying its own rollout and its
+// own variant catalog. Exactly one strategy per flag+environment must have
+// IsDefault set — it carries an empty ConditionJSON so it always matches,
+// guaranteeing a fallback result, and is always evaluated last regardless of
+// Priority.
+type FlagStrategy struct {
 	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
-	FlagID        uuid.UUID `gorm:"type:uuid;index;not null"`
-	EnvironmentID uuid.UUID `gorm:"type:uuid;index;not null"`
+	FlagID        uuid.UUID `gorm:"type:uuid;index:idx_strategy_flag_env;not null"`
+	EnvironmentID uuid.UUID `gorm:"type:uuid;index:idx_strategy_flag_env;not null"`
 	Priority      int       `gorm:"not null"`
+	Name          string
 	Description   string
-	ConditionJSON datatypes.JSON `gorm:"not null"`
-	VariantKey    string         `gorm:"not null"`
-	RolloutJSON   datatypes.JSON
+	IsDefault     bool `gorm:"not null;default:false"`
+	ConditionJSON datatypes.JSON
+	// DefaultVariant is served when this strategy matches and either it has
+	// no rollout or the rollout doesn't produce a bucketed variant.
+	DefaultVariant string `gorm:"not null"`
+	// RolloutJSON, when set, splits traffic matched by this strategy across
+	// variants — this is the per-strategy replacement for the old flag-wide
+	// global rollout percentage.
+	RolloutJSON datatypes.JSON
+	Variants    []FlagStrategyVariant `gorm:"foreignKey:StrategyID"`
+}
+
+type FlagStrategyVariant struct {
+	ID         uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	StrategyID uuid.UUID      `gorm:"type:uuid;index;not null"`
+	Key        string         `gorm:"not null"`
+	Value      datatypes.JSON `gorm:"not null"`
 }

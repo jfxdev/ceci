@@ -12,19 +12,21 @@ import (
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/flag"
 )
 
 // flagService is the subset of FlagService behavior routes depend on.
 type flagService interface {
 	List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error)
 	Get(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error)
-	Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType, defaultVariant string, enabled bool, variants []service.VariantInput, rules []service.RuleInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error)
-	Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in service.UpdateInput) (*model.FeatureFlag, error)
+	Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []flag.StrategyInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error)
+	Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in flag.UpdateInput) (*model.FeatureFlag, error)
+	Archive(ctx context.Context, projectID uuid.UUID, key string) error
+	Unarchive(ctx context.Context, projectID uuid.UUID, key string) error
 	Delete(ctx context.Context, projectID uuid.UUID, key string) error
 }
 
-func RegisterFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, flags *service.FlagService) {
+func RegisterFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, flags *flag.Service) {
 	registerFlagRoutes(rg, auth, roleResolver, envResolver, flags)
 }
 
@@ -59,9 +61,13 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		if req.Enabled != nil {
 			enabled = *req.Enabled
 		}
-		f, err := flags.Create(c.Request.Context(), projectID, environmentID, req.Key, req.Name, req.Description, req.FlagType, req.DefaultVariant, enabled,
-			toVariantInputs(req.Variants), toRuleInputs(req.Rules), req.PrerequisiteFlagKey, req.PrerequisiteVariant)
+		f, err := flags.Create(c.Request.Context(), projectID, environmentID, req.Key, req.Name, req.Description, req.FlagType, enabled,
+			toStrategyInputs(req.Strategies), req.PrerequisiteFlagKey, req.PrerequisiteVariant)
 		if err != nil {
+			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrStrategyDefaultCount) {
+				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to create flag"})
 			return
 		}
@@ -87,28 +93,26 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		}
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
 		environmentID := c.MustGet(middleware.ContextEnvironmentIDKey).(uuid.UUID)
-		in := service.UpdateInput{Enabled: req.Enabled}
+		in := flag.UpdateInput{Enabled: req.Enabled}
 		if req.Name != "" {
 			in.Name = &req.Name
 		}
 		if req.Description != "" {
 			in.Description = &req.Description
 		}
-		if req.DefaultVariant != "" {
-			in.DefaultVariant = &req.DefaultVariant
-		}
-		if req.Variants != nil {
-			in.Variants = toVariantInputs(req.Variants)
-		}
-		if req.Rules != nil {
-			in.Rules = toRuleInputs(req.Rules)
+		if req.Strategies != nil {
+			in.Strategies = toStrategyInputs(req.Strategies)
 		}
 		in.PrerequisiteFlagKey = req.PrerequisiteFlagKey
 		in.PrerequisiteVariant = req.PrerequisiteVariant
 		f, err := flags.Update(c.Request.Context(), projectID, environmentID, c.Param("key"), in)
 		if err != nil {
-			if errors.Is(err, service.ErrFlagNotFound) {
+			if errors.Is(err, flag.ErrNotFound) {
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "flag not found"})
+				return
+			}
+			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrStrategyDefaultCount) {
+				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to update flag"})
@@ -125,28 +129,55 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		}
 		c.Status(http.StatusNoContent)
 	})
+
+	scoped.POST("/:key/archive", middleware.RequireProjectRole(roleResolver, constants.RoleEditor), middleware.RequireProjectEnvironment(envResolver), func(c *gin.Context) {
+		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
+		if err := flags.Archive(c.Request.Context(), projectID, c.Param("key")); err != nil {
+			if errors.Is(err, flag.ErrNotFound) {
+				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "flag not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to archive flag"})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	scoped.POST("/:key/unarchive", middleware.RequireProjectRole(roleResolver, constants.RoleEditor), middleware.RequireProjectEnvironment(envResolver), func(c *gin.Context) {
+		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
+		if err := flags.Unarchive(c.Request.Context(), projectID, c.Param("key")); err != nil {
+			if errors.Is(err, flag.ErrNotFound) {
+				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "flag not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to unarchive flag"})
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
 }
 
 func toFlagDTO(f *model.FeatureFlag) dto.FlagDTO {
-	variants := make([]dto.FlagVariantDTO, 0, len(f.Variants))
-	for _, v := range f.Variants {
-		variants = append(variants, dto.FlagVariantDTO{Key: v.Key, Value: []byte(v.Value)})
-	}
-	rules := make([]dto.FlagRuleDTO, 0, len(f.Rules))
-	for _, r := range f.Rules {
-		rules = append(rules, dto.FlagRuleDTO{
-			Priority:    r.Priority,
-			Description: r.Description,
-			Condition:   []byte(r.ConditionJSON),
-			VariantKey:  r.VariantKey,
-			Rollout:     []byte(r.RolloutJSON),
+	strategies := make([]dto.StrategyDTO, 0, len(f.Strategies))
+	for _, st := range f.Strategies {
+		variants := make([]dto.StrategyVariantDTO, 0, len(st.Variants))
+		for _, v := range st.Variants {
+			variants = append(variants, dto.StrategyVariantDTO{Key: v.Key, Value: []byte(v.Value)})
+		}
+		strategies = append(strategies, dto.StrategyDTO{
+			Order:          st.Priority,
+			Name:           st.Name,
+			Description:    st.Description,
+			IsDefault:      st.IsDefault,
+			Condition:      []byte(st.ConditionJSON),
+			DefaultVariant: st.DefaultVariant,
+			Rollout:        []byte(st.RolloutJSON),
+			Variants:       variants,
 		})
 	}
 	var enabled bool
-	var defaultVariant string
 	if len(f.Configs) > 0 {
 		enabled = f.Configs[0].Enabled
-		defaultVariant = f.Configs[0].DefaultVariant
 	}
 	return dto.FlagDTO{
 		ID:                  f.ID.String(),
@@ -155,31 +186,29 @@ func toFlagDTO(f *model.FeatureFlag) dto.FlagDTO {
 		Description:         f.Description,
 		FlagType:            f.FlagType,
 		Enabled:             enabled,
-		DefaultVariant:      defaultVariant,
-		Variants:            variants,
-		Rules:               rules,
+		Archived:            f.ArchivedAt != nil,
+		Strategies:          strategies,
 		PrerequisiteFlagKey: f.PrerequisiteFlagKey,
 		PrerequisiteVariant: f.PrerequisiteVariant,
 	}
 }
 
-func toVariantInputs(in []dto.FlagVariantInput) []service.VariantInput {
-	out := make([]service.VariantInput, 0, len(in))
-	for _, v := range in {
-		out = append(out, service.VariantInput{Key: v.Key, Value: v.Value})
-	}
-	return out
-}
-
-func toRuleInputs(in []dto.FlagRuleInput) []service.RuleInput {
-	out := make([]service.RuleInput, 0, len(in))
-	for _, r := range in {
-		out = append(out, service.RuleInput{
-			Priority:      r.Priority,
-			Description:   r.Description,
-			ConditionJSON: r.ConditionJSON,
-			VariantKey:    r.VariantKey,
-			RolloutJSON:   r.RolloutJSON,
+func toStrategyInputs(in []dto.StrategyInput) []flag.StrategyInput {
+	out := make([]flag.StrategyInput, 0, len(in))
+	for _, st := range in {
+		variants := make([]flag.StrategyVariantInput, 0, len(st.Variants))
+		for _, v := range st.Variants {
+			variants = append(variants, flag.StrategyVariantInput{Key: v.Key, Value: v.Value})
+		}
+		out = append(out, flag.StrategyInput{
+			Order:          st.Order,
+			Name:           st.Name,
+			Description:    st.Description,
+			IsDefault:      st.IsDefault,
+			ConditionJSON:  st.ConditionJSON,
+			DefaultVariant: st.DefaultVariant,
+			RolloutJSON:    st.RolloutJSON,
+			Variants:       variants,
 		})
 	}
 	return out

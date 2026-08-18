@@ -18,14 +18,14 @@ type FlagRepository interface {
 	// UpdateCore updates the environment-independent fields of a flag: name,
 	// description, and prerequisite.
 	UpdateCore(ctx context.Context, flag *model.FeatureFlag) error
+	SetArchived(ctx context.Context, projectID uuid.UUID, key string, archived bool) error
 	Delete(ctx context.Context, projectID uuid.UUID, key string) error
-	// ReplaceVariantsAndRules atomically replaces a flag's variant catalog
-	// (shared across all environments) and, scoped to a single environment,
-	// its targeting rules.
-	ReplaceVariantsAndRules(ctx context.Context, flagID, environmentID uuid.UUID, variants []model.FlagVariant, rules []model.FlagRule) error
-	// UpsertEnvironmentConfig sets whether a flag is enabled and its default
-	// variant within one environment.
-	UpsertEnvironmentConfig(ctx context.Context, flagID, environmentID uuid.UUID, enabled bool, defaultVariant string) error
+	// ReplaceStrategies atomically replaces a flag's targeting strategies
+	// (each with its own variant catalog), scoped to a single environment.
+	ReplaceStrategies(ctx context.Context, flagID, environmentID uuid.UUID, strategies []model.FlagStrategy) error
+	// UpsertEnvironmentConfig sets whether a flag is enabled (kill switch)
+	// within one environment.
+	UpsertEnvironmentConfig(ctx context.Context, flagID, environmentID uuid.UUID, enabled bool) error
 	// Version returns the flag count and the most recent updated_at across a
 	// project's flags, used to build an OFREP polling ETag.
 	Version(ctx context.Context, projectID uuid.UUID) (int64, time.Time, error)
@@ -42,9 +42,11 @@ func NewFlagRepository(db *gorm.DB) FlagRepository {
 func (r *postgresFlagRepository) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error) {
 	var flags []model.FeatureFlag
 	err := r.db.WithContext(ctx).
-		Preload("Variants").
 		Preload("Configs", func(tx *gorm.DB) *gorm.DB { return tx.Where("environment_id = ?", environmentID) }).
-		Preload("Rules", func(tx *gorm.DB) *gorm.DB { return tx.Where("environment_id = ?", environmentID).Order("priority") }).
+		Preload("Strategies", func(tx *gorm.DB) *gorm.DB {
+			return tx.Where("environment_id = ?", environmentID).Order("is_default, priority")
+		}).
+		Preload("Strategies.Variants").
 		Where("project_id = ?", projectID).
 		Order("key").
 		Find(&flags).Error
@@ -54,9 +56,11 @@ func (r *postgresFlagRepository) List(ctx context.Context, projectID, environmen
 func (r *postgresFlagRepository) FindByKey(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error) {
 	var f model.FeatureFlag
 	err := r.db.WithContext(ctx).
-		Preload("Variants").
 		Preload("Configs", func(tx *gorm.DB) *gorm.DB { return tx.Where("environment_id = ?", environmentID) }).
-		Preload("Rules", func(tx *gorm.DB) *gorm.DB { return tx.Where("environment_id = ?", environmentID).Order("priority") }).
+		Preload("Strategies", func(tx *gorm.DB) *gorm.DB {
+			return tx.Where("environment_id = ?", environmentID).Order("is_default, priority")
+		}).
+		Preload("Strategies.Variants").
 		Where("project_id = ? AND key = ?", projectID, key).
 		First(&f).Error
 	if err != nil {
@@ -69,7 +73,7 @@ func (r *postgresFlagRepository) FindByKey(ctx context.Context, projectID, envir
 }
 
 func (r *postgresFlagRepository) Create(ctx context.Context, flag *model.FeatureFlag) error {
-	return r.db.WithContext(ctx).Omit("Variants", "Configs", "Rules").Create(flag).Error
+	return r.db.WithContext(ctx).Omit("Configs", "Strategies").Create(flag).Error
 }
 
 func (r *postgresFlagRepository) UpdateCore(ctx context.Context, flag *model.FeatureFlag) error {
@@ -83,6 +87,24 @@ func (r *postgresFlagRepository) UpdateCore(ctx context.Context, flag *model.Fea
 		}).Error
 }
 
+func (r *postgresFlagRepository) SetArchived(ctx context.Context, projectID uuid.UUID, key string, archived bool) error {
+	var archivedAt *time.Time
+	if archived {
+		now := time.Now()
+		archivedAt = &now
+	}
+	result := r.db.WithContext(ctx).Model(&model.FeatureFlag{}).
+		Where("project_id = ? AND key = ?", projectID, key).
+		Updates(map[string]any{"archived_at": archivedAt, "updated_at": time.Now()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *postgresFlagRepository) Delete(ctx context.Context, projectID uuid.UUID, key string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var f model.FeatureFlag
@@ -92,52 +114,57 @@ func (r *postgresFlagRepository) Delete(ctx context.Context, projectID uuid.UUID
 			}
 			return err
 		}
-		if err := tx.Where("flag_id = ?", f.ID).Delete(&model.FlagRule{}).Error; err != nil {
+		if err := deleteStrategiesAndVariants(tx, "flag_id = ?", f.ID); err != nil {
 			return err
 		}
 		if err := tx.Where("flag_id = ?", f.ID).Delete(&model.FlagEnvironmentConfig{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("flag_id = ?", f.ID).Delete(&model.FlagVariant{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&f).Error
 	})
 }
 
-func (r *postgresFlagRepository) ReplaceVariantsAndRules(ctx context.Context, flagID, environmentID uuid.UUID, variants []model.FlagVariant, rules []model.FlagRule) error {
+// deleteStrategiesAndVariants removes strategies (matching the given scope)
+// and their variants. Variants reference StrategyID, not FlagID, so they
+// must be deleted via the matched strategies' IDs first.
+func deleteStrategiesAndVariants(tx *gorm.DB, scopeQuery string, scopeArgs ...any) error {
+	var strategyIDs []uuid.UUID
+	if err := tx.Model(&model.FlagStrategy{}).Where(scopeQuery, scopeArgs...).Pluck("id", &strategyIDs).Error; err != nil {
+		return err
+	}
+	if len(strategyIDs) > 0 {
+		if err := tx.Where("strategy_id IN ?", strategyIDs).Delete(&model.FlagStrategyVariant{}).Error; err != nil {
+			return err
+		}
+	}
+	return tx.Where(scopeQuery, scopeArgs...).Delete(&model.FlagStrategy{}).Error
+}
+
+func (r *postgresFlagRepository) ReplaceStrategies(ctx context.Context, flagID, environmentID uuid.UUID, strategies []model.FlagStrategy) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("flag_id = ? AND environment_id = ?", flagID, environmentID).Delete(&model.FlagRule{}).Error; err != nil {
+		if err := deleteStrategiesAndVariants(tx, "flag_id = ? AND environment_id = ?", flagID, environmentID); err != nil {
 			return err
 		}
-		if err := tx.Where("flag_id = ?", flagID).Delete(&model.FlagVariant{}).Error; err != nil {
-			return err
-		}
-		if len(variants) > 0 {
-			if err := tx.Create(&variants).Error; err != nil {
+		if len(strategies) > 0 {
+			if err := tx.Create(&strategies).Error; err != nil {
 				return err
 			}
 		}
-		if len(rules) > 0 {
-			if err := tx.Create(&rules).Error; err != nil {
-				return err
-			}
-		}
-		// Rule/variant-only edits don't otherwise touch the parent flag row,
-		// so bump its updated_at explicitly to keep the project flags
-		// version (see Version) accurate for OFREP ETag polling.
+		// Strategy-only edits don't otherwise touch the parent flag row, so
+		// bump its updated_at explicitly to keep the project flags version
+		// (see Version) accurate for OFREP ETag polling.
 		return tx.Model(&model.FeatureFlag{}).Where("id = ?", flagID).UpdateColumn("updated_at", time.Now()).Error
 	})
 }
 
-func (r *postgresFlagRepository) UpsertEnvironmentConfig(ctx context.Context, flagID, environmentID uuid.UUID, enabled bool, defaultVariant string) error {
+func (r *postgresFlagRepository) UpsertEnvironmentConfig(ctx context.Context, flagID, environmentID uuid.UUID, enabled bool) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var cfg model.FlagEnvironmentConfig
 		err := tx.Where("flag_id = ? AND environment_id = ?", flagID, environmentID).First(&cfg).Error
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			if err := tx.Create(&model.FlagEnvironmentConfig{
-				FlagID: flagID, EnvironmentID: environmentID, Enabled: enabled, DefaultVariant: defaultVariant,
+				FlagID: flagID, EnvironmentID: environmentID, Enabled: enabled,
 			}).Error; err != nil {
 				return err
 			}
@@ -145,7 +172,6 @@ func (r *postgresFlagRepository) UpsertEnvironmentConfig(ctx context.Context, fl
 			return err
 		default:
 			cfg.Enabled = enabled
-			cfg.DefaultVariant = defaultVariant
 			if err := tx.Save(&cfg).Error; err != nil {
 				return err
 			}

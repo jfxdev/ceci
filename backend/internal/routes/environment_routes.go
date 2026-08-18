@@ -12,7 +12,7 @@ import (
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/environment"
 )
 
 // environmentService is the subset of EnvironmentService behavior routes depend on.
@@ -23,7 +23,7 @@ type environmentService interface {
 	Delete(ctx context.Context, projectID uuid.UUID, key string) error
 }
 
-func RegisterEnvironmentRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envs *service.EnvironmentService) {
+func RegisterEnvironmentRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envs *environment.Service) {
 	registerEnvironmentRoutes(rg, auth, roleResolver, envs)
 }
 
@@ -54,7 +54,7 @@ func registerEnvironmentRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
 		e, err := envs.Create(c.Request.Context(), projectID, req.Key, req.Name)
 		if err != nil {
-			if errors.Is(err, service.ErrEnvironmentKeyTaken) {
+			if errors.Is(err, environment.ErrKeyTaken) {
 				c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "environment key already exists"})
 				return
 			}
@@ -73,7 +73,7 @@ func registerEnvironmentRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
 		e, err := envs.Update(c.Request.Context(), projectID, c.Param("envKey"), req.Name)
 		if err != nil {
-			if errors.Is(err, service.ErrEnvironmentNotFound) {
+			if errors.Is(err, environment.ErrNotFound) {
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "environment not found"})
 				return
 			}
@@ -87,11 +87,11 @@ func registerEnvironmentRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
 		if err := envs.Delete(c.Request.Context(), projectID, c.Param("envKey")); err != nil {
 			switch {
-			case errors.Is(err, service.ErrEnvironmentNotFound):
+			case errors.Is(err, environment.ErrNotFound):
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "environment not found"})
-			case errors.Is(err, service.ErrLastEnvironment):
+			case errors.Is(err, environment.ErrLastEnvironment):
 				c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "cannot delete the last environment"})
-			case errors.Is(err, service.ErrDefaultEnvironment):
+			case errors.Is(err, environment.ErrIsDefault):
 				c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "cannot delete the default environment"})
 			default:
 				c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to delete environment"})

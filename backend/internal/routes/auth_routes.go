@@ -12,7 +12,7 @@ import (
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/auth"
 )
 
 // authService is the subset of AuthService behavior routes depend on, kept as
@@ -26,11 +26,11 @@ type authService interface {
 	ParseAccessToken(tokenStr string) (uuid.UUID, error)
 }
 
-func RegisterAuthRoutes(rg *gin.RouterGroup, auth *service.AuthService) {
-	registerAuthRoutes(rg, auth)
+func RegisterAuthRoutes(rg *gin.RouterGroup, authSvc *auth.Service) {
+	registerAuthRoutes(rg, authSvc)
 }
 
-func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
+func registerAuthRoutes(rg *gin.RouterGroup, authSvc authService) {
 	loginRateLimit := middleware.RateLimitPerIP(constants.LoginRateLimitPerMinute, constants.LoginRateLimitBurst)
 
 	rg.POST("/auth/login", loginRateLimit, func(c *gin.Context) {
@@ -39,7 +39,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 			return
 		}
-		accessToken, refreshToken, user, err := auth.Login(c.Request.Context(), req.Email, req.Password)
+		accessToken, refreshToken, user, err := authSvc.Login(c.Request.Context(), req.Email, req.Password)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "invalid credentials"})
 			return
@@ -59,15 +59,15 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 			return
 		}
-		if _, err := auth.Register(c.Request.Context(), req.Email, req.Password, req.Name); err != nil {
-			if errors.Is(err, service.ErrEmailTaken) {
+		if _, err := authSvc.Register(c.Request.Context(), req.Email, req.Password, req.Name); err != nil {
+			if errors.Is(err, auth.ErrEmailTaken) {
 				c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "email already registered"})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to register"})
 			return
 		}
-		accessToken, refreshToken, user, err := auth.Login(c.Request.Context(), req.Email, req.Password)
+		accessToken, refreshToken, user, err := authSvc.Login(c.Request.Context(), req.Email, req.Password)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to register"})
 			return
@@ -85,7 +85,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 			c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "missing refresh token"})
 			return
 		}
-		accessToken, newRefresh, err := auth.Refresh(c.Request.Context(), rawRefresh)
+		accessToken, newRefresh, err := authSvc.Refresh(c.Request.Context(), rawRefresh)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Error: "invalid refresh token"})
 			return
@@ -97,15 +97,15 @@ func registerAuthRoutes(rg *gin.RouterGroup, auth authService) {
 	rg.POST("/auth/logout", func(c *gin.Context) {
 		rawRefresh, err := c.Cookie(constants.RefreshCookieName)
 		if err == nil && rawRefresh != "" {
-			_ = auth.Logout(c.Request.Context(), rawRefresh)
+			_ = authSvc.Logout(c.Request.Context(), rawRefresh)
 		}
 		c.SetCookie(constants.RefreshCookieName, "", -1, "/", "", false, true)
 		c.Status(http.StatusNoContent)
 	})
 
-	rg.GET("/me", middleware.RequireAuth(auth), func(c *gin.Context) {
+	rg.GET("/me", middleware.RequireAuth(authSvc), func(c *gin.Context) {
 		userID := c.MustGet(middleware.ContextUserIDKey).(uuid.UUID)
-		user, err := auth.Me(c.Request.Context(), userID)
+		user, err := authSvc.Me(c.Request.Context(), userID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "user not found"})
 			return

@@ -13,7 +13,8 @@ import (
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
 	"leaflag/backend/internal/repository"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/access"
+	"leaflag/backend/internal/service/project"
 )
 
 type accessGroupService interface {
@@ -64,7 +65,7 @@ func RegisterAccessGroupRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 			return
 		}
 		if err := groups.Delete(c.Request.Context(), groupID); err != nil {
-			if errors.Is(err, service.ErrAccessGroupNotFound) {
+			if errors.Is(err, access.ErrNotFound) {
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "access group not found"})
 				return
 			}
@@ -103,9 +104,9 @@ func RegisterAccessGroupRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 		switch {
 		case err == nil:
 			c.Status(http.StatusCreated)
-		case errors.Is(err, service.ErrUserNotFound):
+		case errors.Is(err, project.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "user not found"})
-		case errors.Is(err, service.ErrAccessGroupMember):
+		case errors.Is(err, access.ErrAlreadyMember):
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "user is already a group member"})
 		default:
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to add group member"})
@@ -157,7 +158,7 @@ func RegisterAccessGroupRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 		switch {
 		case err == nil:
 			c.Status(http.StatusCreated)
-		case errors.Is(err, service.ErrOIDCMappingExists):
+		case errors.Is(err, access.ErrOIDCMappingExists):
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "oidc group is already mapped"})
 		default:
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to add oidc group mapping"})

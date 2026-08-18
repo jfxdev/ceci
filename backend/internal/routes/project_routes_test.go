@@ -16,7 +16,8 @@ import (
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/model"
 	"leaflag/backend/internal/repository"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/access"
+	"leaflag/backend/internal/service/project"
 )
 
 type fakeProjectService struct {
@@ -221,7 +222,7 @@ func TestListMembersRoute(t *testing.T) {
 }
 
 func TestAddMemberRoute_UserNotFound(t *testing.T) {
-	fake := &fakeProjectService{role: constants.RoleAdmin, addMemberErr: service.ErrUserNotFound}
+	fake := &fakeProjectService{role: constants.RoleAdmin, addMemberErr: project.ErrUserNotFound}
 	r := newProjectTestRouter(fake, uuid.New())
 
 	body, _ := json.Marshal(map[string]string{"email": "x@y.com", "role": "viewer"})
@@ -305,7 +306,7 @@ func TestProjectAccessGroupRoutes_ListAndRejectOwnerRole(t *testing.T) {
 
 func TestProjectAccessGroupRoutes_ReturnConflictAndValidateGroupID(t *testing.T) {
 	projectID := uuid.New()
-	groups := &fakeProjectAccessGroupService{grantErr: service.ErrGroupGrantExists}
+	groups := &fakeProjectAccessGroupService{grantErr: access.ErrGrantExists}
 	r := newProjectTestRouter(&fakeProjectService{role: constants.RoleAdmin}, uuid.New(), groups)
 
 	w := httptest.NewRecorder()

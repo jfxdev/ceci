@@ -14,21 +14,21 @@ import (
 
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/middleware"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/flag"
 )
 
 type fakeOFREPFlagService struct {
-	evalResult service.EvaluationResult
-	allResults []service.EvaluationResult
+	evalResult flag.EvaluationResult
+	allResults []flag.EvaluationResult
 	allErr     error
 	version    string
 	versionErr error
 }
 
-func (f *fakeOFREPFlagService) Evaluate(ctx context.Context, projectID, environmentID uuid.UUID, key string, evalCtx map[string]any) service.EvaluationResult {
+func (f *fakeOFREPFlagService) Evaluate(ctx context.Context, projectID, environmentID uuid.UUID, key string, evalCtx map[string]any) flag.EvaluationResult {
 	return f.evalResult
 }
-func (f *fakeOFREPFlagService) EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]service.EvaluationResult, error) {
+func (f *fakeOFREPFlagService) EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]flag.EvaluationResult, error) {
 	return f.allResults, f.allErr
 }
 func (f *fakeOFREPFlagService) Version(ctx context.Context, projectID uuid.UUID) (string, error) {
@@ -74,7 +74,7 @@ func TestOFREPSingleEval_MissingAuth(t *testing.T) {
 }
 
 func TestOFREPSingleEval_Success(t *testing.T) {
-	fake := &fakeOFREPFlagService{evalResult: service.EvaluationResult{Key: "new-checkout", Value: true, Reason: constants.ReasonTargetingMatch, Variant: "on"}}
+	fake := &fakeOFREPFlagService{evalResult: flag.EvaluationResult{Key: "new-checkout", Value: true, Reason: constants.ReasonTargetingMatch, Variant: "on"}}
 	r := newOFREPTestRouter(fake, fakeProjectKeyResolverForRoutes{projectID: uuid.New()})
 
 	w := httptest.NewRecorder()
@@ -85,7 +85,7 @@ func TestOFREPSingleEval_Success(t *testing.T) {
 }
 
 func TestOFREPSingleEval_FlagNotFound(t *testing.T) {
-	fake := &fakeOFREPFlagService{evalResult: service.EvaluationResult{Key: "missing", Reason: constants.ReasonError, ErrorCode: constants.ErrCodeFlagNotFound}}
+	fake := &fakeOFREPFlagService{evalResult: flag.EvaluationResult{Key: "missing", Reason: constants.ReasonError, ErrorCode: constants.ErrCodeFlagNotFound}}
 	r := newOFREPTestRouter(fake, fakeProjectKeyResolverForRoutes{projectID: uuid.New()})
 
 	w := httptest.NewRecorder()
@@ -105,7 +105,7 @@ func TestOFREPSingleEval_BadRequest(t *testing.T) {
 }
 
 func TestOFREPBulkEval_Success(t *testing.T) {
-	fake := &fakeOFREPFlagService{allResults: []service.EvaluationResult{
+	fake := &fakeOFREPFlagService{allResults: []flag.EvaluationResult{
 		{Key: "f1", Value: true, Reason: constants.ReasonStatic, Variant: "on"},
 		{Key: "f2", Value: false, Reason: constants.ReasonStatic, Variant: "off"},
 	}}
@@ -130,7 +130,7 @@ func TestOFREPBulkEval_BadRequest(t *testing.T) {
 
 func TestOFREPBulkEval_ETagAndNotModified(t *testing.T) {
 	fake := &fakeOFREPFlagService{
-		allResults: []service.EvaluationResult{{Key: "f1", Value: true, Reason: constants.ReasonStatic, Variant: "on"}},
+		allResults: []flag.EvaluationResult{{Key: "f1", Value: true, Reason: constants.ReasonStatic, Variant: "on"}},
 		version:    `"1-100"`,
 	}
 	r := newOFREPTestRouter(fake, fakeProjectKeyResolverForRoutes{projectID: uuid.New()})
@@ -163,7 +163,7 @@ func TestOFREPConfiguration(t *testing.T) {
 
 func TestOFREPStream_SendsCurrentFlagsThenClosesOnClientDisconnect(t *testing.T) {
 	fake := &fakeOFREPFlagService{
-		allResults: []service.EvaluationResult{{Key: "f1", Value: true, Reason: constants.ReasonStatic, Variant: "on"}},
+		allResults: []flag.EvaluationResult{{Key: "f1", Value: true, Reason: constants.ReasonStatic, Variant: "on"}},
 	}
 	r := newOFREPTestRouter(fake, fakeProjectKeyResolverForRoutes{projectID: uuid.New()})
 

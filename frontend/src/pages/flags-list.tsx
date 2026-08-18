@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { api, ApiError } from "@/lib/api"
 import { useEnvironment } from "@/lib/environment"
 
@@ -17,21 +18,22 @@ interface Flag {
   name: string
   flagType: string
   enabled: boolean
-  defaultVariant: string
+  archived: boolean
+  strategies: { isDefault: boolean; defaultVariant: string }[]
 }
 
-interface VariantRow {
-  key: string
-  value: string
+function defaultVariantOf(flag: Flag): string {
+  return flag.strategies.find((s) => s.isDefault)?.defaultVariant ?? ""
 }
 
 const FLAG_TYPES = ["boolean", "string", "number", "object"]
+type FlagAction = "archive" | "unarchive" | "delete"
 
-function parseVariantValue(flagType: string, raw: string): unknown {
-  if (flagType === "boolean") return raw === "true"
-  if (flagType === "number") return Number(raw)
-  if (flagType === "object") return JSON.parse(raw)
-  return raw
+const FLAG_TYPE_HINT: Record<string, string> = {
+  boolean: "Starts with A/B variants.",
+  string: "Starts with a single default variant — add the rest in the editor.",
+  number: "Starts with a single default variant — add the rest in the editor.",
+  object: "Starts with a single default variant — add the rest in the editor.",
 }
 
 export function FlagsListPage() {
@@ -51,62 +53,40 @@ export function FlagsListPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["flags", projectId, envKey] }),
   })
 
+  const [pendingAction, setPendingAction] = useState<{ flag: Flag; action: FlagAction } | null>(null)
+  const flagAction = useMutation({
+    mutationFn: ({ flag, action }: { flag: Flag; action: FlagAction }) => {
+      if (action === "archive") return api.post(`${envPath("flags")}/${flag.key}/archive`)
+      if (action === "unarchive") return api.post(`${envPath("flags")}/${flag.key}/unarchive`)
+      return api.delete(`${envPath("flags")}/${flag.key}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["flags", projectId, envKey] })
+      setPendingAction(null)
+    },
+  })
+
   const [open, setOpen] = useState(false)
   const [key, setKey] = useState("")
   const [name, setName] = useState("")
   const [flagType, setFlagType] = useState("boolean")
-  const [defaultVariant, setDefaultVariant] = useState("off")
-  const [variants, setVariants] = useState<VariantRow[]>([
-    { key: "on", value: "true" },
-    { key: "off", value: "false" },
-  ])
   const [error, setError] = useState<string | null>(null)
 
   const createFlag = useMutation({
-    mutationFn: () =>
-      api.post(envPath("flags"), {
-        key,
-        name,
-        flagType,
-        defaultVariant,
-        variants: variants.map((v) => ({ key: v.key, value: parseVariantValue(flagType, v.value) })),
-      }),
+    mutationFn: () => api.post(envPath("flags"), { key, name, flagType }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["flags", projectId, envKey] })
       setOpen(false)
       setKey("")
       setName("")
       setFlagType("boolean")
-      setDefaultVariant("off")
-      setVariants([
-        { key: "on", value: "true" },
-        { key: "off", value: "false" },
-      ])
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to create flag"),
   })
 
-  function updateVariant(index: number, field: keyof VariantRow, value: string) {
-    setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)))
-  }
-
-  function addVariant() {
-    setVariants((prev) => [...prev, { key: "", value: "" }])
-  }
-
-  function removeVariant(index: number) {
-    setVariants((prev) => prev.filter((_, i) => i !== index))
-  }
-
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    try {
-      variants.forEach((v) => parseVariantValue(flagType, v.value))
-    } catch {
-      setError("Variant values must be valid for the selected type")
-      return
-    }
     createFlag.mutate()
   }
 
@@ -114,19 +94,60 @@ export function FlagsListPage() {
     { key: "key", header: "Key", render: (f) => <code className="text-sm">{f.key}</code> },
     { key: "name", header: "Name", render: (f) => f.name },
     { key: "type", header: "Type", render: (f) => <Badge variant="secondary">{f.flagType}</Badge> },
-    { key: "default", header: "Default", render: (f) => f.defaultVariant },
+    { key: "default", header: "Default", render: (f) => defaultVariantOf(f) },
     {
       key: "enabled",
       header: "Enabled",
       render: (f) => (
         <Switch
-          checked={f.enabled}
+          checked={f.enabled && !f.archived}
           onCheckedChange={() => toggleFlag.mutate(f)}
           onClick={(e) => e.stopPropagation()}
+          disabled={f.archived}
         />
       ),
     },
+    {
+      key: "status",
+      header: "Status",
+      render: (f) => f.archived ? <Badge variant="secondary">Archived</Badge> : <Badge variant="outline">Active</Badge>,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "w-44 text-right",
+      render: (f) => (
+        <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
+          <Button variant="ghost" size="sm" onClick={() => setPendingAction({ flag: f, action: f.archived ? "unarchive" : "archive" })}>
+            {f.archived ? "Unarchive" : "Archive"}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setPendingAction({ flag: f, action: "delete" })}>Delete</Button>
+        </div>
+      ),
+    },
   ]
+
+  const actionCopy: Record<FlagAction, { title: string; description: string; label: string; variant: "default" | "destructive" }> = {
+    archive: {
+      title: `Archive "${pendingAction?.flag.key ?? ""}"?`,
+      description: "The flag will stop serving targeted values until it is unarchived.",
+      label: "Archive",
+      variant: "default",
+    },
+    unarchive: {
+      title: `Unarchive "${pendingAction?.flag.key ?? ""}"?`,
+      description: "The flag will become available for evaluation again.",
+      label: "Unarchive",
+      variant: "default",
+    },
+    delete: {
+      title: `Delete "${pendingAction?.flag.key ?? ""}"?`,
+      description: "All variants, targeting rules, and environment configuration for this flag will be permanently removed.",
+      label: "Delete",
+      variant: "destructive",
+    },
+  }
+  const confirmation = pendingAction ? actionCopy[pendingAction.action] : null
 
   return (
     <div className="p-8">
@@ -149,65 +170,21 @@ export function FlagsListPage() {
                 <Label htmlFor="flag-name">Name</Label>
                 <Input id="flag-name" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
-              <div className="flex gap-4">
-                <div className="flex flex-1 flex-col gap-2">
-                  <Label>Type</Label>
-                  <Select value={flagType} onValueChange={setFlagType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FLAG_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {t}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-1 flex-col gap-2">
-                  <Label>Default variant</Label>
-                  <Select value={defaultVariant} onValueChange={setDefaultVariant}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {variants.filter((v) => v.key).map((v) => (
-                        <SelectItem key={v.key} value={v.key}>
-                          {v.key}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
               <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <Label>Variants</Label>
-                  <Button type="button" variant="ghost" size="sm" onClick={addVariant}>
-                    Add variant
-                  </Button>
-                </div>
-                {variants.map((v, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <Input
-                      placeholder="key"
-                      value={v.key}
-                      onChange={(e) => updateVariant(i, "key", e.target.value)}
-                      className="w-32"
-                      required
-                    />
-                    <Input
-                      placeholder="value"
-                      value={v.value}
-                      onChange={(e) => updateVariant(i, "value", e.target.value)}
-                      required
-                    />
-                    <Button type="button" variant="ghost" size="sm" onClick={() => removeVariant(i)} disabled={variants.length <= 1}>
-                      Remove
-                    </Button>
-                  </div>
-                ))}
+                <Label>Type</Label>
+                <Select value={flagType} onValueChange={setFlagType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FLAG_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{FLAG_TYPE_HINT[flagType]}</p>
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <DialogFooter>
@@ -225,6 +202,16 @@ export function FlagsListPage() {
         rowKey={(f) => f.key}
         emptyMessage={isLoading ? "Loading..." : "No flags yet"}
         onRowClick={(f) => navigate(`/projects/${projectId}/flags/${f.key}`)}
+      />
+      <ConfirmDialog
+        open={!!pendingAction}
+        onOpenChange={(value) => !value && setPendingAction(null)}
+        title={confirmation?.title ?? ""}
+        description={confirmation?.description}
+        confirmLabel={confirmation?.label}
+        confirmVariant={confirmation?.variant}
+        loading={flagAction.isPending}
+        onConfirm={() => pendingAction && flagAction.mutate(pendingAction)}
       />
     </div>
   )

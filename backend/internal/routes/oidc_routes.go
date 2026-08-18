@@ -6,18 +6,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/access"
+	"leaflag/backend/internal/service/auth"
+	"leaflag/backend/internal/service/oidc"
 )
 
 const oidcTransactionCookie = "leaflag_oidc_tx"
 
-func RegisterOIDCRoutes(rg *gin.RouterGroup, auth *service.AuthService, groups *service.AccessGroupService, oidc *service.OIDCConfigurationService) {
+func RegisterOIDCRoutes(rg *gin.RouterGroup, auth *auth.Service, groups *access.Service, oidcConfig *oidc.ConfigurationService) {
 	rg.GET("/auth/oidc/config", func(c *gin.Context) {
-		if oidc == nil {
+		if oidcConfig == nil {
 			c.JSON(http.StatusOK, gin.H{"enabled": false})
 			return
 		}
-		status, err := oidc.Status(c.Request.Context())
+		status, err := oidcConfig.Status(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load oidc configuration"})
 			return
@@ -25,11 +27,11 @@ func RegisterOIDCRoutes(rg *gin.RouterGroup, auth *service.AuthService, groups *
 		c.JSON(http.StatusOK, gin.H{"enabled": status.Enabled})
 	})
 	rg.GET("/auth/oidc/login", func(c *gin.Context) {
-		if oidc == nil {
+		if oidcConfig == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "oidc is not configured"})
 			return
 		}
-		provider, err := oidc.Current(c.Request.Context())
+		provider, err := oidcConfig.Current(c.Request.Context())
 		if err != nil || provider == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "oidc is not configured"})
 			return
@@ -43,11 +45,11 @@ func RegisterOIDCRoutes(rg *gin.RouterGroup, auth *service.AuthService, groups *
 		c.Redirect(http.StatusFound, authorizationURL)
 	})
 	rg.GET("/auth/oidc/callback", func(c *gin.Context) {
-		if oidc == nil {
+		if oidcConfig == nil {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		provider, providerErr := oidc.Current(c.Request.Context())
+		provider, providerErr := oidcConfig.Current(c.Request.Context())
 		if providerErr != nil || provider == nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -92,8 +94,8 @@ func requestIsSecure(c *gin.Context) bool {
 	return c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
 }
 
-func redirectOIDCResult(c *gin.Context, oidc *service.OIDCService, success bool) {
-	target := oidc.FrontendURL()
+func redirectOIDCResult(c *gin.Context, provider *oidc.Service, success bool) {
+	target := provider.FrontendURL()
 	if !success {
 		target = target + "?sso_error=1"
 	}

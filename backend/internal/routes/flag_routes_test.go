@@ -15,7 +15,7 @@ import (
 
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/flag"
 )
 
 type fakeFlagService struct {
@@ -31,7 +31,9 @@ type fakeFlagService struct {
 	updated   *model.FeatureFlag
 	updateErr error
 
-	deleteErr error
+	deleteErr    error
+	archiveErr   error
+	unarchiveErr error
 }
 
 func (f *fakeFlagService) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error) {
@@ -40,14 +42,20 @@ func (f *fakeFlagService) List(ctx context.Context, projectID, environmentID uui
 func (f *fakeFlagService) Get(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error) {
 	return f.get, f.getErr
 }
-func (f *fakeFlagService) Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType, defaultVariant string, enabled bool, variants []service.VariantInput, rules []service.RuleInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error) {
+func (f *fakeFlagService) Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []flag.StrategyInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error) {
 	return f.created, f.createErr
 }
-func (f *fakeFlagService) Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in service.UpdateInput) (*model.FeatureFlag, error) {
+func (f *fakeFlagService) Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in flag.UpdateInput) (*model.FeatureFlag, error) {
 	return f.updated, f.updateErr
 }
 func (f *fakeFlagService) Delete(ctx context.Context, projectID uuid.UUID, key string) error {
 	return f.deleteErr
+}
+func (f *fakeFlagService) Archive(ctx context.Context, projectID uuid.UUID, key string) error {
+	return f.archiveErr
+}
+func (f *fakeFlagService) Unarchive(ctx context.Context, projectID uuid.UUID, key string) error {
+	return f.unarchiveErr
 }
 
 func newFlagTestRouter(flags flagService, role constants.ProjectRole) *gin.Engine {
@@ -62,8 +70,10 @@ func newFlagTestRouter(flags flagService, role constants.ProjectRole) *gin.Engin
 func sampleFlag() *model.FeatureFlag {
 	return &model.FeatureFlag{
 		ID: uuid.New(), Key: "new-checkout", Name: "New checkout", FlagType: "boolean",
-		Configs:  []model.FlagEnvironmentConfig{{Enabled: true, DefaultVariant: "off"}},
-		Variants: []model.FlagVariant{{Key: "off", Value: datatypes.JSON(`false`)}},
+		Configs: []model.FlagEnvironmentConfig{{Enabled: true}},
+		Strategies: []model.FlagStrategy{
+			{IsDefault: true, DefaultVariant: "off", Variants: []model.FlagStrategyVariant{{Key: "off", Value: datatypes.JSON(`false`)}}},
+		},
 	}
 }
 
@@ -82,10 +92,18 @@ func TestListFlagsRoute(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "new-checkout")
 }
 
+func sampleStrategiesPayload() []map[string]any {
+	return []map[string]any{{
+		"isDefault":      true,
+		"defaultVariant": "off",
+		"variants":       []map[string]any{{"key": "off", "value": false}},
+	}}
+}
+
 func TestCreateFlagRoute_Forbidden(t *testing.T) {
 	r := newFlagTestRouter(&fakeFlagService{}, constants.RoleViewer)
 
-	body, _ := json.Marshal(map[string]any{"key": "f1", "flagType": "boolean", "defaultVariant": "off", "variants": []map[string]any{{"key": "off", "value": false}}})
+	body, _ := json.Marshal(map[string]any{"key": "f1", "flagType": "boolean", "strategies": sampleStrategiesPayload()})
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, authedRequest(http.MethodPost, flagsPath(uuid.New().String(), ""), body))
 
@@ -96,7 +114,7 @@ func TestCreateFlagRoute_Success(t *testing.T) {
 	fake := &fakeFlagService{created: sampleFlag()}
 	r := newFlagTestRouter(fake, constants.RoleEditor)
 
-	body, _ := json.Marshal(map[string]any{"key": "new-checkout", "flagType": "boolean", "defaultVariant": "off", "variants": []map[string]any{{"key": "off", "value": false}}})
+	body, _ := json.Marshal(map[string]any{"key": "new-checkout", "flagType": "boolean", "strategies": sampleStrategiesPayload()})
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, authedRequest(http.MethodPost, flagsPath(uuid.New().String(), ""), body))
 
@@ -114,7 +132,7 @@ func TestCreateFlagRoute_BadRequest(t *testing.T) {
 }
 
 func TestGetFlagRoute_NotFound(t *testing.T) {
-	r := newFlagTestRouter(&fakeFlagService{getErr: service.ErrFlagNotFound}, constants.RoleViewer)
+	r := newFlagTestRouter(&fakeFlagService{getErr: flag.ErrNotFound}, constants.RoleViewer)
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, authedRequest(http.MethodGet, flagsPath(uuid.New().String(), "/missing"), nil))
@@ -124,7 +142,7 @@ func TestGetFlagRoute_NotFound(t *testing.T) {
 
 func TestUpdateFlagRoute_KillSwitch(t *testing.T) {
 	disabled := sampleFlag()
-	disabled.Configs = []model.FlagEnvironmentConfig{{Enabled: false, DefaultVariant: "off"}}
+	disabled.Configs = []model.FlagEnvironmentConfig{{Enabled: false}}
 	fake := &fakeFlagService{updated: disabled}
 	r := newFlagTestRouter(fake, constants.RoleEditor)
 
@@ -137,7 +155,7 @@ func TestUpdateFlagRoute_KillSwitch(t *testing.T) {
 }
 
 func TestUpdateFlagRoute_NotFound(t *testing.T) {
-	fake := &fakeFlagService{updateErr: service.ErrFlagNotFound}
+	fake := &fakeFlagService{updateErr: flag.ErrNotFound}
 	r := newFlagTestRouter(fake, constants.RoleEditor)
 
 	body, _ := json.Marshal(map[string]any{"enabled": false})
@@ -163,4 +181,18 @@ func TestDeleteFlagRoute_Forbidden(t *testing.T) {
 	r.ServeHTTP(w, authedRequest(http.MethodDelete, flagsPath(uuid.New().String(), "/new-checkout"), nil))
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestArchiveFlagRoute(t *testing.T) {
+	r := newFlagTestRouter(&fakeFlagService{}, constants.RoleEditor)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, authedRequest(http.MethodPost, flagsPath(uuid.New().String(), "/new-checkout/archive"), nil))
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestUnarchiveFlagRoute(t *testing.T) {
+	r := newFlagTestRouter(&fakeFlagService{}, constants.RoleEditor)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, authedRequest(http.MethodPost, flagsPath(uuid.New().String(), "/new-checkout/unarchive"), nil))
+	assert.Equal(t, http.StatusNoContent, w.Code)
 }

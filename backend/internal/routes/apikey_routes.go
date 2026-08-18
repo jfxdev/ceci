@@ -11,7 +11,7 @@ import (
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/apikey"
 )
 
 // apiKeyService is the subset of APIKeyService behavior routes depend on.
@@ -21,7 +21,7 @@ type apiKeyService interface {
 	Revoke(ctx context.Context, id uuid.UUID) error
 }
 
-func RegisterAPIKeyRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, keys *service.APIKeyService) {
+func RegisterAPIKeyRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, keys *apikey.Service) {
 	registerAPIKeyRoutes(rg, auth, roleResolver, envResolver, keys)
 }
 

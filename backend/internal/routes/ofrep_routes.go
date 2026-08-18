@@ -10,13 +10,13 @@ import (
 
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/middleware"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/flag"
 )
 
 // ofrepFlagService is the subset of FlagService behavior the OFREP routes depend on.
 type ofrepFlagService interface {
-	Evaluate(ctx context.Context, projectID, environmentID uuid.UUID, key string, evalCtx map[string]any) service.EvaluationResult
-	EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]service.EvaluationResult, error)
+	Evaluate(ctx context.Context, projectID, environmentID uuid.UUID, key string, evalCtx map[string]any) flag.EvaluationResult
+	EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]flag.EvaluationResult, error)
 	Version(ctx context.Context, projectID uuid.UUID) (string, error)
 	Subscribe(projectID uuid.UUID) (<-chan struct{}, func())
 }
@@ -197,7 +197,7 @@ func notModified(c *gin.Context, flags ofrepFlagService, projectID uuid.UUID) bo
 	return false
 }
 
-func toOFREPResponse(res service.EvaluationResult) ofrepFlagResponse {
+func toOFREPResponse(res flag.EvaluationResult) ofrepFlagResponse {
 	return ofrepFlagResponse{
 		Key:       res.Key,
 		Value:     res.Value,
@@ -207,7 +207,7 @@ func toOFREPResponse(res service.EvaluationResult) ofrepFlagResponse {
 	}
 }
 
-func statusForResult(res service.EvaluationResult) int {
+func statusForResult(res flag.EvaluationResult) int {
 	switch res.ErrorCode {
 	case constants.ErrCodeFlagNotFound:
 		return http.StatusNotFound

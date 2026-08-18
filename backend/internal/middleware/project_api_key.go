@@ -14,7 +14,7 @@ import (
 
 // ProjectKeyResolver validates a raw project API key and returns the
 // project and environment it belongs to, kept as an interface so it can be
-// satisfied by *service.APIKeyService or a test fake.
+// satisfied by *apikey.Service or a test fake.
 type ProjectKeyResolver interface {
 	ResolveEnvironment(ctx context.Context, rawKey string) (projectID, environmentID uuid.UUID, err error)
 }

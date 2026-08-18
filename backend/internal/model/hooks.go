@@ -64,13 +64,13 @@ func (f *FeatureFlag) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (v *FlagVariant) BeforeCreate(tx *gorm.DB) error {
-	generateID(&v.ID)
+func (s *FlagStrategy) BeforeCreate(tx *gorm.DB) error {
+	generateID(&s.ID)
 	return nil
 }
 
-func (r *FlagRule) BeforeCreate(tx *gorm.DB) error {
-	generateID(&r.ID)
+func (v *FlagStrategyVariant) BeforeCreate(tx *gorm.DB) error {
+	generateID(&v.ID)
 	return nil
 }
 

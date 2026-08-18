@@ -11,7 +11,16 @@ import (
 	"leaflag/backend/internal/repository"
 	"leaflag/backend/internal/routes"
 	"leaflag/backend/internal/runtimeplane"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/access"
+	"leaflag/backend/internal/service/apikey"
+	"leaflag/backend/internal/service/auth"
+	"leaflag/backend/internal/service/contextfield"
+	"leaflag/backend/internal/service/environment"
+	"leaflag/backend/internal/service/flag"
+	"leaflag/backend/internal/service/maintenance"
+	"leaflag/backend/internal/service/oidc"
+	"leaflag/backend/internal/service/parameter"
+	"leaflag/backend/internal/service/project"
 )
 
 func main() {
@@ -47,27 +56,30 @@ func main() {
 	projectRepo := repository.NewProjectRepository(gdb)
 	environmentRepo := repository.NewEnvironmentRepository(gdb)
 	environmentTemplateRepo := repository.NewEnvironmentTemplateRepository(gdb)
+	contextFieldRepo := repository.NewContextFieldRepository(gdb)
 	parameterRepo := repository.NewParameterRepository(gdb)
 	flagRepo := repository.NewFlagRepository(gdb)
 	apiKeyRepo := repository.NewAPIKeyRepository(gdb)
 	instanceSettingsRepo := repository.NewInstanceSettingsRepository(gdb)
 	accessGroupRepo := repository.NewAccessGroupRepository(gdb)
-	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
-	oidcService := service.NewOIDCConfigurationService(instanceSettingsRepo, cfg.EncryptionKey, cfg.JWTSecret)
-	projectService := service.NewProjectService(projectRepo, userRepo, environmentRepo, environmentTemplateRepo, accessGroupRepo)
-	accessGroupService := service.NewAccessGroupService(accessGroupRepo, userRepo)
-	environmentService := service.NewEnvironmentService(environmentRepo)
-	environmentTemplateService := service.NewEnvironmentTemplateService(environmentTemplateRepo)
-	parameterService := service.NewParameterService(parameterRepo)
-	flagService := service.NewFlagService(flagRepo)
-	apiKeyService := service.NewAPIKeyService(apiKeyRepo)
-	maintenanceService := service.NewMaintenanceService(instanceSettingsRepo)
+	authService := auth.NewService(userRepo, cfg.JWTSecret)
+	oidcService := oidc.NewConfigurationService(instanceSettingsRepo, cfg.EncryptionKey, cfg.JWTSecret)
+	projectService := project.NewService(projectRepo, userRepo, environmentRepo, environmentTemplateRepo, accessGroupRepo)
+	accessGroupService := access.NewService(accessGroupRepo, userRepo)
+	environmentService := environment.NewService(environmentRepo)
+	environmentTemplateService := environment.NewTemplateService(environmentTemplateRepo)
+	contextFieldService := contextfield.NewService(contextFieldRepo)
+	parameterService := parameter.NewService(parameterRepo)
+	flagService := flag.NewService(flagRepo)
+	apiKeyService := apikey.NewService(apiKeyRepo)
+	maintenanceService := maintenance.NewService(instanceSettingsRepo)
 
 	services := routes.Services{
 		Auth:                 authService,
 		Projects:             projectService,
 		Environments:         environmentService,
 		EnvironmentTemplates: environmentTemplateService,
+		ContextFields:        contextFieldService,
 		Parameters:           parameterService,
 		Flags:                flagService,
 		APIKeys:              apiKeyService,

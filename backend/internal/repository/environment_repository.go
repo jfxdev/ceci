@@ -16,7 +16,7 @@ type EnvironmentRepository interface {
 	FindByKey(ctx context.Context, projectID uuid.UUID, key string) (*model.Environment, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Environment, error)
 	Update(ctx context.Context, env *model.Environment) error
-	// Delete removes an environment and cascades its flag rules, flag
+	// Delete removes an environment and cascades its flag strategies, flag
 	// configs, parameters, and API keys.
 	Delete(ctx context.Context, id uuid.UUID) error
 	Count(ctx context.Context, projectID uuid.UUID) (int64, error)
@@ -73,7 +73,7 @@ func (r *postgresEnvironmentRepository) Update(ctx context.Context, env *model.E
 
 func (r *postgresEnvironmentRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("environment_id = ?", id).Delete(&model.FlagRule{}).Error; err != nil {
+		if err := deleteStrategiesAndVariants(tx, "environment_id = ?", id); err != nil {
 			return err
 		}
 		if err := tx.Where("environment_id = ?", id).Delete(&model.FlagEnvironmentConfig{}).Error; err != nil {

@@ -11,7 +11,7 @@ import (
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/environment"
 )
 
 type adminAuthorizer interface {
@@ -25,7 +25,7 @@ type environmentTemplateService interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
-func RegisterAdminSettingsRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, templates *service.EnvironmentTemplateService) {
+func RegisterAdminSettingsRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, templates *environment.TemplateService) {
 	registerAdminSettingsRoutes(rg, auth, admins, templates)
 }
 
@@ -55,11 +55,11 @@ func registerAdminSettingsRoutes(rg *gin.RouterGroup, auth middleware.TokenParse
 		}
 		template, err := templates.Create(c.Request.Context(), req.Key, req.Name, req.IsRequired)
 		if err != nil {
-			if errors.Is(err, service.ErrReservedEnvironmentTemplateKey) {
+			if errors.Is(err, environment.ErrReservedTemplateKey) {
 				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "environment template key is reserved"})
 				return
 			}
-			if errors.Is(err, service.ErrEnvironmentTemplateKeyTaken) {
+			if errors.Is(err, environment.ErrTemplateKeyTaken) {
 				c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "environment template key already exists"})
 				return
 			}
@@ -82,7 +82,7 @@ func registerAdminSettingsRoutes(rg *gin.RouterGroup, auth middleware.TokenParse
 		}
 		template, err := templates.Update(c.Request.Context(), templateID, req.Name, req.IsRequired)
 		if err != nil {
-			if errors.Is(err, service.ErrEnvironmentTemplateNotFound) {
+			if errors.Is(err, environment.ErrTemplateNotFound) {
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "environment template not found"})
 				return
 			}
@@ -99,7 +99,7 @@ func registerAdminSettingsRoutes(rg *gin.RouterGroup, auth middleware.TokenParse
 			return
 		}
 		if err := templates.Delete(c.Request.Context(), templateID); err != nil {
-			if errors.Is(err, service.ErrEnvironmentTemplateNotFound) {
+			if errors.Is(err, environment.ErrTemplateNotFound) {
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "environment template not found"})
 				return
 			}

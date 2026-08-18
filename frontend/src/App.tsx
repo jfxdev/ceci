@@ -19,6 +19,7 @@ import { PlaygroundPage } from "@/pages/playground"
 import { EnvironmentListPage } from "@/pages/environment-list"
 import { AdminSettingsPage } from "@/pages/admin-settings"
 import { AccessGroupsPage } from "@/pages/access-groups"
+import { ContextFieldsPage } from "@/pages/context-fields"
 
 const queryClient = new QueryClient()
 
@@ -41,6 +42,7 @@ function App() {
                   <Route path="/projects/:projectId/parameters" element={<ParametersBrowserPage />} />
                   <Route path="/projects/:projectId/playground" element={<PlaygroundPage />} />
                   <Route path="/projects/:projectId/environments" element={<EnvironmentListPage />} />
+                  <Route path="/projects/:projectId/contexts" element={<ContextFieldsPage />} />
                   <Route path="/projects/:projectId/members" element={<MembersListPage />} />
                 <Route path="/projects/:projectId/settings" element={<ProjectSettingsPage />} />
                   <Route path="/admin/settings" element={<AdminSettingsPage />} />

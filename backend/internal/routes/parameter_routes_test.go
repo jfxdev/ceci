@@ -15,7 +15,7 @@ import (
 
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/parameter"
 )
 
 type fakeParameterService struct {
@@ -106,7 +106,7 @@ func TestGetParameterRoute_HierarchicalKey(t *testing.T) {
 }
 
 func TestGetParameterRoute_NotFound(t *testing.T) {
-	fake := &fakeParameterService{getErr: service.ErrParameterNotFound}
+	fake := &fakeParameterService{getErr: parameter.ErrNotFound}
 	r := newParameterTestRouter(fake, constants.RoleViewer)
 
 	w := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestDeleteParameterRoute_Success(t *testing.T) {
 }
 
 func TestDeleteParameterRoute_NotFound(t *testing.T) {
-	fake := &fakeParameterService{deleteErr: service.ErrParameterNotFound}
+	fake := &fakeParameterService{deleteErr: parameter.ErrNotFound}
 	r := newParameterTestRouter(fake, constants.RoleAdmin)
 
 	w := httptest.NewRecorder()

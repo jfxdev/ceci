@@ -9,9 +9,9 @@ import (
 
 	"leaflag/backend/internal/config"
 	"leaflag/backend/internal/db"
-	"leaflag/backend/internal/repository"
-	"leaflag/backend/internal/service"
 	"leaflag/backend/internal/model"
+	"leaflag/backend/internal/repository"
+	"leaflag/backend/internal/service/auth"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 	}
 
 	userRepo := repository.NewUserRepository(gdb)
-	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
+	authService := auth.NewService(userRepo, cfg.JWTSecret)
 
 	if user, err := userRepo.FindByEmail(context.Background(), *email); err == nil {
 		if err := userRepo.SetAdmin(context.Background(), user.ID, true); err != nil {

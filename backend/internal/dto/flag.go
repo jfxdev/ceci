@@ -2,66 +2,69 @@ package dto
 
 import "encoding/json"
 
-type FlagVariantInput struct {
+type StrategyVariantInput struct {
 	Key   string          `json:"key" binding:"required"`
 	Value json.RawMessage `json:"value" binding:"required"`
 }
 
-type FlagRuleInput struct {
-	Priority      int             `json:"priority"`
-	Description   string          `json:"description"`
-	ConditionJSON json.RawMessage `json:"condition" binding:"required"`
-	VariantKey    string          `json:"variantKey" binding:"required"`
-	RolloutJSON   json.RawMessage `json:"rollout"`
+type StrategyInput struct {
+	Order          int                    `json:"order"`
+	Name           string                 `json:"name"`
+	Description    string                 `json:"description"`
+	IsDefault      bool                   `json:"isDefault"`
+	ConditionJSON  json.RawMessage        `json:"condition"`
+	DefaultVariant string                 `json:"defaultVariant" binding:"required"`
+	RolloutJSON    json.RawMessage        `json:"rollout"`
+	Variants       []StrategyVariantInput `json:"variants" binding:"required,min=1"`
 }
 
 type CreateFlagRequest struct {
-	Key                 string             `json:"key" binding:"required"`
-	Name                string             `json:"name"`
-	Description         string             `json:"description"`
-	FlagType            string             `json:"flagType" binding:"required"`
-	Enabled             *bool              `json:"enabled"`
-	DefaultVariant      string             `json:"defaultVariant" binding:"required"`
-	Variants            []FlagVariantInput `json:"variants" binding:"required,min=1"`
-	Rules               []FlagRuleInput    `json:"rules"`
-	PrerequisiteFlagKey string             `json:"prerequisiteFlagKey,omitempty"`
-	PrerequisiteVariant string             `json:"prerequisiteVariant,omitempty"`
+	Key         string `json:"key" binding:"required"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	FlagType    string `json:"flagType" binding:"required"`
+	Enabled     *bool  `json:"enabled"`
+	// Strategies is optional at creation time: when omitted, the backend
+	// derives a single starting catch-all strategy from FlagType.
+	Strategies          []StrategyInput `json:"strategies"`
+	PrerequisiteFlagKey string          `json:"prerequisiteFlagKey,omitempty"`
+	PrerequisiteVariant string          `json:"prerequisiteVariant,omitempty"`
 }
 
 type UpdateFlagRequest struct {
-	Name                string             `json:"name"`
-	Description         string             `json:"description"`
-	Enabled             *bool              `json:"enabled"`
-	DefaultVariant      string             `json:"defaultVariant"`
-	Variants            []FlagVariantInput `json:"variants"`
-	Rules               []FlagRuleInput    `json:"rules"`
-	PrerequisiteFlagKey *string            `json:"prerequisiteFlagKey"`
-	PrerequisiteVariant *string            `json:"prerequisiteVariant"`
+	Name                string          `json:"name"`
+	Description         string          `json:"description"`
+	Enabled             *bool           `json:"enabled"`
+	Strategies          []StrategyInput `json:"strategies"`
+	PrerequisiteFlagKey *string         `json:"prerequisiteFlagKey"`
+	PrerequisiteVariant *string         `json:"prerequisiteVariant"`
 }
 
-type FlagVariantDTO struct {
+type StrategyVariantDTO struct {
 	Key   string          `json:"key"`
 	Value json.RawMessage `json:"value"`
 }
 
-type FlagRuleDTO struct {
-	Priority    int             `json:"priority"`
-	Description string          `json:"description"`
-	Condition   json.RawMessage `json:"condition"`
-	VariantKey  string          `json:"variantKey"`
-	Rollout     json.RawMessage `json:"rollout,omitempty"`
+type StrategyDTO struct {
+	Order          int                  `json:"order"`
+	Name           string               `json:"name"`
+	Description    string               `json:"description"`
+	IsDefault      bool                 `json:"isDefault"`
+	Condition      json.RawMessage      `json:"condition"`
+	DefaultVariant string               `json:"defaultVariant"`
+	Rollout        json.RawMessage      `json:"rollout,omitempty"`
+	Variants       []StrategyVariantDTO `json:"variants"`
 }
 
 type FlagDTO struct {
-	ID                  string           `json:"id"`
-	Key                 string           `json:"key"`
-	Name                string           `json:"name"`
-	Description         string           `json:"description"`
-	FlagType            string           `json:"flagType"`
-	Enabled             bool             `json:"enabled"`
-	DefaultVariant      string           `json:"defaultVariant"`
-	Variants            []FlagVariantDTO `json:"variants"`
-	Rules               []FlagRuleDTO    `json:"rules"`
-	PrerequisiteFlagKey string           `json:"prerequisiteFlagKey,omitempty"`
-	PrerequisiteVariant string           `json:"prerequisiteVariant,omitempty"`
+	ID                  string        `json:"id"`
+	Key                 string        `json:"key"`
+	Name                string        `json:"name"`
+	Description         string        `json:"description"`
+	FlagType            string        `json:"flagType"`
+	Enabled             bool          `json:"enabled"`
+	Archived            bool          `json:"archived"`
+	Strategies          []StrategyDTO `json:"strategies"`
+	PrerequisiteFlagKey string        `json:"prerequisiteFlagKey,omitempty"`
+	PrerequisiteVariant string        `json:"prerequisiteVariant,omitempty"`
 }

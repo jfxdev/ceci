@@ -36,6 +36,7 @@ const (
 	ReasonDisabled           = "DISABLED"
 	ReasonError              = "ERROR"
 	ReasonPrerequisiteFailed = "PREREQUISITE_FAILED"
+	ReasonSplit              = "SPLIT"
 )
 
 // OFREP error codes.

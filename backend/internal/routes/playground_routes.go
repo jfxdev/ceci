@@ -10,13 +10,13 @@ import (
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/flag"
 )
 
 // playgroundFlagService is the subset of FlagService behavior the playground
 // route depends on.
 type playgroundFlagService interface {
-	EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]service.EvaluationResult, error)
+	EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]flag.EvaluationResult, error)
 }
 
 type playgroundEvaluateRequest struct {
@@ -30,7 +30,7 @@ type playgroundResponse struct {
 // RegisterPlaygroundRoutes exposes a session-authenticated, read-only
 // equivalent of the OFREP bulk-evaluate endpoint so members can test
 // targeting rules against an arbitrary context without an API key.
-func RegisterPlaygroundRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, flags *service.FlagService) {
+func RegisterPlaygroundRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, flags *flag.Service) {
 	registerPlaygroundRoutes(rg, auth, roleResolver, envResolver, flags)
 }
 

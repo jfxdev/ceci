@@ -13,7 +13,8 @@ import (
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
 	"leaflag/backend/internal/repository"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/access"
+	"leaflag/backend/internal/service/project"
 )
 
 // projectService is the subset of ProjectService behavior routes depend on.
@@ -37,7 +38,7 @@ type projectAccessGroupService interface {
 	RevokeProjectGrant(ctx context.Context, projectID, groupID uuid.UUID) error
 }
 
-func RegisterProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, projects *service.ProjectService, groups *service.AccessGroupService) {
+func RegisterProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, projects *project.Service, groups *access.Service) {
 	registerProjectRoutes(rg, auth, projects, groups)
 }
 
@@ -168,7 +169,7 @@ func registerProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, pro
 		switch {
 		case err == nil:
 			c.Status(http.StatusCreated)
-		case errors.Is(err, service.ErrGroupGrantExists):
+		case errors.Is(err, access.ErrGrantExists):
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "access group is already linked to this project"})
 		case errors.Is(err, repository.ErrNotFound):
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "access group not found"})
@@ -237,9 +238,9 @@ func registerProjectRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, pro
 		switch {
 		case err == nil:
 			c.Status(http.StatusCreated)
-		case errors.Is(err, service.ErrUserNotFound):
+		case errors.Is(err, project.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "user not found"})
-		case errors.Is(err, service.ErrAlreadyMember):
+		case errors.Is(err, project.ErrAlreadyMember):
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Error: "user is already a member"})
 		default:
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to add member"})

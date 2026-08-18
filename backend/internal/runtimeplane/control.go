@@ -32,9 +32,9 @@ func (s *ControlSource) Load(ctx context.Context, ifNoneMatch string) (*Snapshot
 	}
 	var flags []model.FeatureFlag
 	if err := s.db.WithContext(ctx).
-		Preload("Variants", func(tx *gorm.DB) *gorm.DB { return tx.Order("key") }).
 		Preload("Configs", func(tx *gorm.DB) *gorm.DB { return tx.Order("environment_id") }).
-		Preload("Rules", func(tx *gorm.DB) *gorm.DB { return tx.Order("environment_id, priority") }).
+		Preload("Strategies", func(tx *gorm.DB) *gorm.DB { return tx.Order("environment_id, is_default, priority") }).
+		Preload("Strategies.Variants").
 		Order("project_id, key").
 		Find(&flags).Error; err != nil {
 		return nil, "", false, err

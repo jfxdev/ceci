@@ -15,7 +15,7 @@ const ContextProjectIDKey = "projectID"
 const ContextProjectRoleKey = "projectRole"
 
 // ProjectRoleResolver looks up the caller's role in a project, kept as an
-// interface so it can be satisfied by *service.ProjectService or a test fake.
+// interface so it can be satisfied by *project.Service or a test fake.
 type ProjectRoleResolver interface {
 	RoleOf(ctx context.Context, projectID, userID uuid.UUID) (constants.ProjectRole, error)
 }

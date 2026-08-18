@@ -14,7 +14,7 @@ import (
 
 	"leaflag/backend/internal/model"
 	"leaflag/backend/internal/repository"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/access"
 )
 
 type fakeAccessGroupRouteService struct {
@@ -88,7 +88,7 @@ func TestAccessGroupRoutes_CreateRequiresInstanceAdmin(t *testing.T) {
 
 func TestAccessGroupRoutes_CreateAndMemberConflict(t *testing.T) {
 	groupID := uuid.New()
-	r := newAccessGroupRouteTestRouter(&fakeAccessGroupRouteService{createItem: &model.AccessGroup{ID: groupID, Name: "Payments"}, addMemberErr: service.ErrAccessGroupMember}, true)
+	r := newAccessGroupRouteTestRouter(&fakeAccessGroupRouteService{createItem: &model.AccessGroup{ID: groupID, Name: "Payments"}, addMemberErr: access.ErrAlreadyMember}, true)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, authedRequest(http.MethodPost, "/admin/access-groups", []byte(`{"name":"Payments","description":"Team"}`)))
 	require.Equal(t, http.StatusCreated, w.Code)
@@ -102,7 +102,7 @@ func TestAccessGroupRoutes_CreateAndMemberConflict(t *testing.T) {
 }
 
 func TestAccessGroupRoutes_ValidateIDsAndNotFound(t *testing.T) {
-	r := newAccessGroupRouteTestRouter(&fakeAccessGroupRouteService{deleteErr: service.ErrAccessGroupNotFound}, true)
+	r := newAccessGroupRouteTestRouter(&fakeAccessGroupRouteService{deleteErr: access.ErrNotFound}, true)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, authedRequest(http.MethodDelete, "/admin/access-groups/not-a-uuid", nil))
 	assert.Equal(t, http.StatusBadRequest, w.Code)

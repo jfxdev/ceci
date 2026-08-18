@@ -4,15 +4,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/oidc"
 	"net/http"
 )
 
-func RegisterOIDCAdminRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, oidc *service.OIDCConfigurationService) {
+func RegisterOIDCAdminRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, oidcConfig *oidc.ConfigurationService) {
 	g := rg.Group("/admin/oidc")
 	g.Use(middleware.RequireAuth(auth), requireAdmin(admins))
 	g.GET("", func(c *gin.Context) {
-		s, e := oidc.Status(c.Request.Context())
+		s, e := oidcConfig.Status(c.Request.Context())
 		if e != nil {
 			c.JSON(500, dto.ErrorResponse{Error: "failed to load oidc configuration"})
 			return
@@ -25,7 +25,7 @@ func RegisterOIDCAdminRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, a
 			c.JSON(400, dto.ErrorResponse{Error: e.Error()})
 			return
 		}
-		s, e := oidc.Update(c.Request.Context(), service.OIDCConfigurationInput{Enabled: r.Enabled, IssuerURL: r.IssuerURL, ClientID: r.ClientID, ClientSecret: r.ClientSecret, RedirectURL: r.RedirectURL, JITEnabled: r.JITEnabled})
+		s, e := oidcConfig.Update(c.Request.Context(), oidc.ConfigurationInput{Enabled: r.Enabled, IssuerURL: r.IssuerURL, ClientID: r.ClientID, ClientSecret: r.ClientSecret, RedirectURL: r.RedirectURL, JITEnabled: r.JITEnabled})
 		if e != nil {
 			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: e.Error()})
 			return

@@ -13,7 +13,7 @@ import (
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/parameter"
 )
 
 // parameterService is the subset of ParameterService behavior routes depend on.
@@ -29,7 +29,7 @@ type parameterService interface {
 // single-value and version-history routes live under their own static
 // prefix ("value/", "versions/") followed by a wildcard, keeping them
 // unambiguous for gin's router instead of colliding on a bare ":key" param.
-func RegisterParameterRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, params *service.ParameterService) {
+func RegisterParameterRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleResolver middleware.ProjectRoleResolver, envResolver middleware.EnvironmentResolver, params *parameter.Service) {
 	registerParameterRoutes(rg, auth, roleResolver, envResolver, params)
 }
 
@@ -89,7 +89,7 @@ func registerParameterRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, r
 		switch {
 		case err == nil:
 			c.Status(http.StatusNoContent)
-		case errors.Is(err, service.ErrParameterNotFound):
+		case errors.Is(err, parameter.ErrNotFound):
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "parameter not found"})
 		default:
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to delete parameter"})

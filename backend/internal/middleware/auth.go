@@ -14,7 +14,7 @@ import (
 const ContextUserIDKey = "userID"
 
 // TokenParser is the minimal capability RequireAuth needs, kept as an
-// interface so it can be satisfied by *service.AuthService or a test fake.
+// interface so it can be satisfied by *auth.Service or a test fake.
 type TokenParser interface {
 	ParseAccessToken(tokenStr string) (uuid.UUID, error)
 }

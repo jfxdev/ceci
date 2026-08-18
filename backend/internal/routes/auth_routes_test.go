@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/auth"
 )
 
 type fakeAuthService struct {
@@ -165,7 +165,7 @@ func TestRegisterRoute_Success(t *testing.T) {
 }
 
 func TestRegisterRoute_EmailTaken(t *testing.T) {
-	fake := &fakeAuthService{registerErr: service.ErrEmailTaken}
+	fake := &fakeAuthService{registerErr: auth.ErrEmailTaken}
 	r := newTestRouter(fake)
 
 	body, _ := json.Marshal(map[string]string{"email": "dup@b.com", "password": "supersecret", "name": "Dup"})

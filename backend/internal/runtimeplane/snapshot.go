@@ -16,7 +16,7 @@ import (
 
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/flag"
 )
 
 // Snapshot is the complete read model replicated from the Control Plane. API
@@ -141,15 +141,15 @@ func compileSnapshot(snapshot *Snapshot, etag string) (*state, error) {
 func filterFlagForEnvironment(flag model.FeatureFlag, environmentID uuid.UUID) model.FeatureFlag {
 	filtered := flag
 	filtered.Configs = nil
-	filtered.Rules = nil
+	filtered.Strategies = nil
 	for _, config := range flag.Configs {
 		if config.EnvironmentID == environmentID {
 			filtered.Configs = append(filtered.Configs, config)
 		}
 	}
-	for _, rule := range flag.Rules {
-		if rule.EnvironmentID == environmentID {
-			filtered.Rules = append(filtered.Rules, rule)
+	for _, strategy := range flag.Strategies {
+		if strategy.EnvironmentID == environmentID {
+			filtered.Strategies = append(filtered.Strategies, strategy)
 		}
 	}
 	return filtered
@@ -177,20 +177,20 @@ func (s *Store) ResolveEnvironment(_ context.Context, rawKey string) (uuid.UUID,
 	return sc.projectID, sc.environmentID, nil
 }
 
-func (s *Store) Evaluate(_ context.Context, projectID, environmentID uuid.UUID, key string, evalCtx map[string]any) service.EvaluationResult {
+func (s *Store) Evaluate(_ context.Context, projectID, environmentID uuid.UUID, key string, evalCtx map[string]any) flag.EvaluationResult {
 	loaded, ok := s.scope(projectID, environmentID)
 	if !ok {
-		return service.EvaluationResult{Key: key, Reason: constants.ReasonError, ErrorCode: constants.ErrCodeFlagNotFound}
+		return flag.EvaluationResult{Key: key, Reason: constants.ReasonError, ErrorCode: constants.ErrCodeFlagNotFound}
 	}
-	return service.EvaluateLoadedFlags(loaded.flags, key, evalCtx)
+	return flag.EvaluateLoaded(loaded.flags, key, evalCtx)
 }
 
-func (s *Store) EvaluateAll(_ context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]service.EvaluationResult, error) {
+func (s *Store) EvaluateAll(_ context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]flag.EvaluationResult, error) {
 	loaded, ok := s.scope(projectID, environmentID)
 	if !ok {
 		return nil, fmt.Errorf("runtime scope not found")
 	}
-	return service.EvaluateAllLoadedFlags(loaded.flags, evalCtx), nil
+	return flag.EvaluateAllLoaded(loaded.flags, evalCtx), nil
 }
 
 func (s *Store) Version(_ context.Context, _ uuid.UUID) (string, error) {

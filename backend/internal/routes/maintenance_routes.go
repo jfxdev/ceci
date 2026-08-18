@@ -10,21 +10,21 @@ import (
 
 	"leaflag/backend/internal/dto"
 	"leaflag/backend/internal/middleware"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/maintenance"
 )
 
 type maintenanceService interface {
-	Status(ctx context.Context) (service.MaintenanceStatus, error)
-	Update(ctx context.Context, enabled bool, message string, changedBy uuid.UUID) (service.MaintenanceStatus, error)
+	Status(ctx context.Context) (maintenance.Status, error)
+	Update(ctx context.Context, enabled bool, message string, changedBy uuid.UUID) (maintenance.Status, error)
 }
 
-func RegisterMaintenanceRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, maintenance *service.MaintenanceService) {
-	registerMaintenanceRoutes(rg, auth, admins, maintenance)
+func RegisterMaintenanceRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, maintenanceSvc *maintenance.Service) {
+	registerMaintenanceRoutes(rg, auth, admins, maintenanceSvc)
 }
 
-func registerMaintenanceRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, maintenance maintenanceService) {
+func registerMaintenanceRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, admins adminAuthorizer, maintenanceSvc maintenanceService) {
 	rg.GET("/maintenance-status", middleware.RequireAuth(auth), func(c *gin.Context) {
-		status, err := maintenance.Status(c.Request.Context())
+		status, err := maintenanceSvc.Status(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to load maintenance status"})
 			return
@@ -41,10 +41,10 @@ func registerMaintenanceRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 			return
 		}
 		userID := c.MustGet(middleware.ContextUserIDKey).(uuid.UUID)
-		status, err := maintenance.Update(c.Request.Context(), req.Enabled, req.Message, userID)
+		status, err := maintenanceSvc.Update(c.Request.Context(), req.Enabled, req.Message, userID)
 		if err != nil {
 			switch {
-			case errors.Is(err, service.ErrMaintenanceMessageRequired), errors.Is(err, service.ErrMaintenanceMessageTooLong):
+			case errors.Is(err, maintenance.ErrMessageRequired), errors.Is(err, maintenance.ErrMessageTooLong):
 				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 			default:
 				c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to update maintenance mode"})
@@ -55,7 +55,7 @@ func registerMaintenanceRoutes(rg *gin.RouterGroup, auth middleware.TokenParser,
 	})
 }
 
-func toMaintenanceStatusDTO(status service.MaintenanceStatus) dto.MaintenanceStatusDTO {
+func toMaintenanceStatusDTO(status maintenance.Status) dto.MaintenanceStatusDTO {
 	out := dto.MaintenanceStatusDTO{Enabled: status.Enabled, Message: status.Message}
 	if status.StartedAt != nil {
 		formatted := status.StartedAt.Format(timeLayout)

@@ -13,16 +13,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"leaflag/backend/internal/constants"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/flag"
 )
 
 type fakePlaygroundFlagService struct {
-	allResults []service.EvaluationResult
+	allResults []flag.EvaluationResult
 	allErr     error
 	gotCtx     map[string]any
 }
 
-func (f *fakePlaygroundFlagService) EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]service.EvaluationResult, error) {
+func (f *fakePlaygroundFlagService) EvaluateAll(ctx context.Context, projectID, environmentID uuid.UUID, evalCtx map[string]any) ([]flag.EvaluationResult, error) {
 	f.gotCtx = evalCtx
 	return f.allResults, f.allErr
 }
@@ -38,7 +38,7 @@ func newPlaygroundTestRouter(flags playgroundFlagService, role constants.Project
 
 func TestPlaygroundEvaluate_Success(t *testing.T) {
 	fake := &fakePlaygroundFlagService{
-		allResults: []service.EvaluationResult{
+		allResults: []flag.EvaluationResult{
 			{Key: "flag-a", Value: true, Reason: constants.ReasonTargetingMatch, Variant: "on"},
 		},
 	}

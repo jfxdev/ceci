@@ -12,17 +12,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/maintenance"
 )
 
 type fakeMaintenanceService struct {
-	status service.MaintenanceStatus
+	status maintenance.Status
 }
 
-func (f *fakeMaintenanceService) Status(context.Context) (service.MaintenanceStatus, error) {
+func (f *fakeMaintenanceService) Status(context.Context) (maintenance.Status, error) {
 	return f.status, nil
 }
-func (f *fakeMaintenanceService) Update(_ context.Context, enabled bool, message string, changedBy uuid.UUID) (service.MaintenanceStatus, error) {
+func (f *fakeMaintenanceService) Update(_ context.Context, enabled bool, message string, changedBy uuid.UUID) (maintenance.Status, error) {
 	f.status.Enabled = enabled
 	f.status.Message = message
 	f.status.StartedBy = changedBy
@@ -45,9 +45,9 @@ func TestMaintenanceRoutes_ReturnStatusAndRequireAdminForUpdates(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	userID := uuid.New()
 	started := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
-	maintenance := &fakeMaintenanceService{status: service.MaintenanceStatus{Enabled: true, Message: "Deploying", StartedAt: &started}}
+	maintenanceSvc := &fakeMaintenanceService{status: maintenance.Status{Enabled: true, Message: "Deploying", StartedAt: &started}}
 	r := gin.New()
-	registerMaintenanceRoutes(&r.RouterGroup, maintenanceAuthFake{userID: userID}, fakeAdminAuthorizer{admin: true}, maintenance)
+	registerMaintenanceRoutes(&r.RouterGroup, maintenanceAuthFake{userID: userID}, fakeAdminAuthorizer{admin: true}, maintenanceSvc)
 
 	statusRequest := httptest.NewRequest(http.MethodGet, "/maintenance-status", nil)
 	statusRequest.Header.Set("Authorization", "Bearer token")

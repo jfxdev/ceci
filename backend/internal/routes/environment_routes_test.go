@@ -14,7 +14,7 @@ import (
 
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/model"
-	"leaflag/backend/internal/service"
+	"leaflag/backend/internal/service/environment"
 )
 
 type fakeEnvironmentService struct {
@@ -86,7 +86,7 @@ func TestCreateEnvironmentRoute_Success(t *testing.T) {
 }
 
 func TestCreateEnvironmentRoute_KeyTaken(t *testing.T) {
-	fake := &fakeEnvironmentService{createErr: service.ErrEnvironmentKeyTaken}
+	fake := &fakeEnvironmentService{createErr: environment.ErrKeyTaken}
 	r := newEnvironmentTestRouter(fake, constants.RoleAdmin)
 
 	body, _ := json.Marshal(map[string]string{"key": "staging", "name": "Staging"})
@@ -97,7 +97,7 @@ func TestCreateEnvironmentRoute_KeyTaken(t *testing.T) {
 }
 
 func TestUpdateEnvironmentRoute_NotFound(t *testing.T) {
-	fake := &fakeEnvironmentService{updateErr: service.ErrEnvironmentNotFound}
+	fake := &fakeEnvironmentService{updateErr: environment.ErrNotFound}
 	r := newEnvironmentTestRouter(fake, constants.RoleAdmin)
 
 	body, _ := json.Marshal(map[string]string{"name": "Staging 2"})
@@ -108,7 +108,7 @@ func TestUpdateEnvironmentRoute_NotFound(t *testing.T) {
 }
 
 func TestDeleteEnvironmentRoute_LastEnvironment(t *testing.T) {
-	fake := &fakeEnvironmentService{deleteErr: service.ErrLastEnvironment}
+	fake := &fakeEnvironmentService{deleteErr: environment.ErrLastEnvironment}
 	r := newEnvironmentTestRouter(fake, constants.RoleAdmin)
 
 	w := httptest.NewRecorder()
@@ -118,7 +118,7 @@ func TestDeleteEnvironmentRoute_LastEnvironment(t *testing.T) {
 }
 
 func TestDeleteEnvironmentRoute_DefaultEnvironment(t *testing.T) {
-	fake := &fakeEnvironmentService{deleteErr: service.ErrDefaultEnvironment}
+	fake := &fakeEnvironmentService{deleteErr: environment.ErrIsDefault}
 	r := newEnvironmentTestRouter(fake, constants.RoleAdmin)
 
 	w := httptest.NewRecorder()

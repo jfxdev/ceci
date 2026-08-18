@@ -24,8 +24,11 @@ func TestStore_EvaluatesAndReadsOnlyFromSnapshot(t *testing.T) {
 		APIKeys: []APIKey{{KeyHash: hex.EncodeToString(sum[:]), ProjectID: projectID, EnvironmentID: environmentID}},
 		Flags: []model.FeatureFlag{{
 			ProjectID: projectID, Key: "checkout",
-			Variants: []model.FlagVariant{{Key: "on", Value: datatypes.JSON([]byte("true"))}, {Key: "off", Value: datatypes.JSON([]byte("false"))}},
-			Configs:  []model.FlagEnvironmentConfig{{EnvironmentID: environmentID, Enabled: true, DefaultVariant: "on"}},
+			Configs: []model.FlagEnvironmentConfig{{EnvironmentID: environmentID, Enabled: true}},
+			Strategies: []model.FlagStrategy{{
+				EnvironmentID: environmentID, IsDefault: true, DefaultVariant: "on",
+				Variants: []model.FlagStrategyVariant{{Key: "on", Value: datatypes.JSON([]byte("true"))}, {Key: "off", Value: datatypes.JSON([]byte("false"))}},
+			}},
 		}},
 		Parameters: []RuntimeParameter{{ProjectID: projectID, EnvironmentID: environmentID, Key: "service/db/host", Value: "db.internal", Version: 3}},
 	}, `"snapshot-1"`))

@@ -14,7 +14,7 @@ import (
 const ContextEnvironmentIDKey = "environmentID"
 
 // EnvironmentResolver looks up an environment by its project-scoped key,
-// kept as an interface so it can be satisfied by *service.EnvironmentService
+// kept as an interface so it can be satisfied by *environment.Service
 // or a test fake.
 type EnvironmentResolver interface {
 	FindByKey(ctx context.Context, projectID uuid.UUID, key string) (*model.Environment, error)

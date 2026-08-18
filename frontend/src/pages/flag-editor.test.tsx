@@ -49,6 +49,7 @@ describe("leafToCondition / conditionToLeaf round-trip", () => {
     expect(condition).toEqual({ "not contains": [{ var: "email" }, "@acme.com"] })
     expect(conditionToLeaf(condition)).toEqual(leaf)
   })
+
 })
 
 describe("ruleToCondition / conditionToRule round-trip", () => {
