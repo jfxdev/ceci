@@ -1,0 +1,10 @@
+.env
+bin/
+backend/tmp/
+backend/internal/web/dist/*
+!backend/internal/web/dist/index.html
+frontend/dist/
+frontend/node_modules/
+node_modules/
+*.tsbuildinfo
+.DS_Store
