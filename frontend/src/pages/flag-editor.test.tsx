@@ -80,6 +80,95 @@ describe("ruleToCondition / conditionToRule round-trip", () => {
       rollout: [],
     }
     const condition = ruleToCondition(rule)
+    expect(conditionToRule(condition)).toEqual({
+      combinator: "or",
+      conditions: [
+        rule.conditions[0],
+        { ...rule.conditions[1], connector: "or" },
+      ],
+    })
+  })
+
+  it("supports one nested AND/OR group", () => {
+    const rule: RuleRow = {
+      priority: 1,
+      description: "",
+      combinator: "and",
+      conditions: [
+        { attribute: "plan", operator: "==", value: "pro", negate: false },
+        {
+          kind: "group",
+          combinator: "or",
+          conditions: [
+            { attribute: "country", operator: "==", value: "BR", negate: false },
+            { attribute: "country", operator: "==", value: "US", negate: false },
+          ],
+        },
+      ],
+      variantKey: "on",
+      rollout: [],
+    }
+
+    const condition = ruleToCondition(rule)
+    expect(condition).toEqual({
+      and: [
+        { "==": [{ var: "plan" }, "pro"] },
+        {
+          or: [
+            { "==": [{ var: "country" }, "BR"] },
+            { "==": [{ var: "country" }, "US"] },
+          ],
+        },
+      ],
+    })
+    expect(conditionToRule(condition)).toEqual({
+      combinator: "and",
+      conditions: [
+        rule.conditions[0],
+        { ...rule.conditions[1], connector: "and" },
+      ],
+    })
+  })
+
+  it("keeps a connector on a newly added condition independent from the preceding group", () => {
+    const rule: RuleRow = {
+      priority: 1,
+      description: "",
+      combinator: "and",
+      conditions: [
+        { attribute: "plan", operator: "==", value: "pro", negate: false },
+        {
+          kind: "group",
+          combinator: "or",
+          conditions: [
+            { attribute: "country", operator: "==", value: "BR", negate: false },
+            { attribute: "country", operator: "==", value: "US", negate: false },
+          ],
+          connector: "and",
+        },
+        { attribute: "role", operator: "==", value: "admin", negate: false, connector: "or" },
+      ],
+      variantKey: "on",
+      rollout: [],
+    }
+
+    const condition = ruleToCondition(rule)
+    expect(condition).toEqual({
+      or: [
+        {
+          and: [
+            { "==": [{ var: "plan" }, "pro"] },
+            {
+              or: [
+                { "==": [{ var: "country" }, "BR"] },
+                { "==": [{ var: "country" }, "US"] },
+              ],
+            },
+          ],
+        },
+        { "==": [{ var: "role" }, "admin"] },
+      ],
+    })
     expect(conditionToRule(condition)).toEqual({ combinator: "or", conditions: rule.conditions })
   })
 })

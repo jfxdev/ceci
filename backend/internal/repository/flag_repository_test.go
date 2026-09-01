@@ -45,8 +45,8 @@ func TestFlagRepository_CreateFindListDelete(t *testing.T) {
 	found, err := repo.FindByKey(ctx, projectID, envID, "new-checkout")
 	require.NoError(t, err)
 	require.Len(t, found.Strategies, 2)
-	assert.Equal(t, "on", found.Strategies[0].DefaultVariant, "non-default strategy sorts first")
-	assert.True(t, found.Strategies[1].IsDefault)
+	assert.Equal(t, "off", found.Strategies[0].DefaultVariant, "strategies sort by priority")
+	assert.Equal(t, 0, found.Strategies[0].Priority)
 	require.Len(t, found.Configs, 1)
 	assert.True(t, found.Configs[0].Enabled)
 
@@ -107,15 +107,48 @@ func TestFlagRepository_UpdateCore(t *testing.T) {
 	projectID := uuid.New()
 	envID := uuid.New()
 
-	f := &model.FeatureFlag{ProjectID: projectID, Key: "f1", FlagType: "boolean"}
+	f := &model.FeatureFlag{ProjectID: projectID, Key: "f1", FlagType: "boolean", Tags: datatypes.NewJSONSlice([]string{"checkout"})}
 	require.NoError(t, repo.Create(ctx, f))
 
 	f.Name = "F1 renamed"
+	f.Tags = datatypes.NewJSONSlice([]string{"checkout", "growth"})
 	require.NoError(t, repo.UpdateCore(ctx, f))
 
 	found, err := repo.FindByKey(ctx, projectID, envID, "f1")
 	require.NoError(t, err)
 	assert.Equal(t, "F1 renamed", found.Name)
+	assert.Equal(t, []string{"checkout", "growth"}, []string(found.Tags))
+}
+
+func TestFlagRepository_Collaborators(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewFlagRepository(db)
+	ctx := context.Background()
+	projectID := uuid.New()
+	envID := uuid.New()
+	creator := &model.User{Email: "joao@example.com", Name: "João"}
+	require.NoError(t, db.Create(creator).Error)
+
+	f := &model.FeatureFlag{
+		ProjectID:     projectID,
+		Key:           "f1",
+		FlagType:      "boolean",
+		CreatedByID:   &creator.ID,
+		Collaborators: []model.FlagCollaborator{{UserID: creator.ID}},
+	}
+	require.NoError(t, repo.Create(ctx, f))
+
+	other := &model.User{Email: "david@example.com", Name: "David"}
+	require.NoError(t, db.Create(other).Error)
+	require.NoError(t, repo.AddCollaborator(ctx, f.ID, other.ID))
+	require.NoError(t, repo.AddCollaborator(ctx, f.ID, other.ID), "adding the same collaborator twice is idempotent")
+
+	found, err := repo.FindByKey(ctx, projectID, envID, "f1")
+	require.NoError(t, err)
+	require.NotNil(t, found.CreatedBy)
+	assert.Equal(t, "João", found.CreatedBy.Name)
+	require.Len(t, found.Collaborators, 2)
+	assert.ElementsMatch(t, []string{"João", "David"}, []string{found.Collaborators[0].User.Name, found.Collaborators[1].User.Name})
 }
 
 func TestFlagRepository_SetArchived(t *testing.T) {

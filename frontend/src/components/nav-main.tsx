@@ -1,6 +1,7 @@
 import { NavLink, useParams } from "react-router-dom"
 import { LayoutDashboard, Flag, KeyRound, Users, Settings, FolderKanban, FlaskConical, Boxes, ShieldCheck, UsersRound, Braces, type LucideIcon } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import { useTranslation } from "react-i18next"
 
 import {
   SidebarGroup,
@@ -20,22 +21,23 @@ interface NavItem {
 export function NavMain() {
   const { projectId } = useParams<{ projectId: string }>()
   const { user } = useAuth()
+  const { t } = useTranslation()
 
   const items: NavItem[] = projectId ? [
-    { title: "Overview", path: `/projects/${projectId}/overview`, icon: LayoutDashboard },
-    { title: "Flags", path: `/projects/${projectId}/flags`, icon: Flag },
-    { title: "Parameters", path: `/projects/${projectId}/parameters`, icon: KeyRound },
-    { title: "Playground", path: `/projects/${projectId}/playground`, icon: FlaskConical },
-    { title: "Environments", path: `/projects/${projectId}/environments`, icon: Boxes },
-    { title: "Contexts", path: `/projects/${projectId}/contexts`, icon: Braces },
-    { title: "Members", path: `/projects/${projectId}/members`, icon: Users },
-    { title: "Settings", path: `/projects/${projectId}/settings`, icon: Settings },
+    { title: t("nav.overview"), path: `/projects/${projectId}/overview`, icon: LayoutDashboard },
+    { title: t("nav.flags"), path: `/projects/${projectId}/flags`, icon: Flag },
+    { title: t("nav.parameters"), path: `/projects/${projectId}/parameters`, icon: KeyRound },
+    { title: t("nav.playground"), path: `/projects/${projectId}/playground`, icon: FlaskConical },
+    { title: t("nav.environments"), path: `/projects/${projectId}/environments`, icon: Boxes },
+    { title: t("nav.contexts"), path: `/projects/${projectId}/contexts`, icon: Braces },
+    { title: t("nav.members"), path: `/projects/${projectId}/members`, icon: Users },
+    { title: t("nav.settings"), path: `/projects/${projectId}/settings`, icon: Settings },
   ] : []
 
   return (
     <>
       <SidebarGroup>
-        {projectId && <SidebarGroupLabel>Project</SidebarGroupLabel>}
+        {projectId && <SidebarGroupLabel>{t("nav.project")}</SidebarGroupLabel>}
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.path}>
@@ -48,10 +50,10 @@ export function NavMain() {
             </SidebarMenuItem>
           ))}
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="All projects">
+            <SidebarMenuButton asChild tooltip={t("nav.allProjects")}>
               <NavLink to="/projects">
                 <FolderKanban />
-                <span>All projects</span>
+                <span>{t("nav.allProjects")}</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -59,21 +61,21 @@ export function NavMain() {
       </SidebarGroup>
       {user?.isAdmin && (
         <SidebarGroup>
-          <SidebarGroupLabel>Administration</SidebarGroupLabel>
+          <SidebarGroupLabel>{t("nav.administration")}</SidebarGroupLabel>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Admin settings">
+              <SidebarMenuButton asChild tooltip={t("nav.adminSettings")}>
                 <NavLink to="/admin/settings" className={({ isActive }) => (isActive ? "font-medium" : undefined)}>
                   <ShieldCheck />
-                  <span>Admin settings</span>
+                  <span>{t("nav.adminSettings")}</span>
                 </NavLink>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Access groups">
+              <SidebarMenuButton asChild tooltip={t("nav.accessGroups")}>
                 <NavLink to="/admin/access-groups" className={({ isActive }) => (isActive ? "font-medium" : undefined)}>
                   <UsersRound />
-                  <span>Access groups</span>
+                  <span>{t("nav.accessGroups")}</span>
                 </NavLink>
               </SidebarMenuButton>
             </SidebarMenuItem>

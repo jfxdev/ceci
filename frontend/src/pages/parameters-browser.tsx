@@ -104,8 +104,11 @@ export function ParametersBrowserPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Parameters</h1>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Parameters</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Browse and edit the key/value store for this environment.</p>
+        </div>
         <div className="flex items-center gap-2">
           <Input placeholder="Filter by prefix..." value={prefix} onChange={(e) => setPrefix(e.target.value)} className="w-64" />
           <Dialog

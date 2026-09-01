@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation, useParams } from "react-router-dom"
-import { TriangleAlert } from "lucide-react"
+import { Palette, TriangleAlert } from "lucide-react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import {
@@ -14,7 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { EnvironmentProvider, useEnvironment } from "@/lib/environment"
+import { colorThemes, useColorTheme } from "@/lib/color-theme"
 import { useMaintenance } from "@/lib/maintenance"
+import { useTranslation } from "react-i18next"
 
 const SECTION_LABEL: Record<string, string> = {
   overview: "Overview",
@@ -28,6 +30,7 @@ const SECTION_LABEL: Record<string, string> = {
 
 /** shadcn sidebar-07 dashboard shell wrapping every authenticated page. */
 export function AppLayout() {
+  const { t } = useTranslation()
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
   const section = location.pathname.split("/").pop() ?? ""
@@ -45,36 +48,35 @@ export function AppLayout() {
               <BreadcrumbList>
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
-                    <Link to="/projects">Projects</Link>
+                    <Link to="/projects">{t("projects.title")}</Link>
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 {location.pathname.startsWith("/admin/") ? (
                   <>
                     <BreadcrumbSeparator />
-                    <BreadcrumbItem><BreadcrumbPage>{section === "access-groups" ? "Access groups" : "Admin settings"}</BreadcrumbPage></BreadcrumbItem>
+                    <BreadcrumbItem><BreadcrumbPage>{section === "access-groups" ? t("nav.accessGroups") : t("nav.adminSettings")}</BreadcrumbPage></BreadcrumbItem>
                   </>
                 ) : projectId && SECTION_LABEL[section] && (
                   <>
                     <BreadcrumbSeparator />
                     <BreadcrumbItem>
-                      <BreadcrumbPage>{SECTION_LABEL[section]}</BreadcrumbPage>
+                      <BreadcrumbPage>{t(`nav.${section === "environments" ? "environments" : section}`)}</BreadcrumbPage>
                     </BreadcrumbItem>
                   </>
                 )}
               </BreadcrumbList>
             </Breadcrumb>
-            {projectId && (
-              <div className="ml-auto">
-                <EnvironmentSwitcher />
-              </div>
-            )}
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <ColorThemeSwitcher />
+              {projectId && <EnvironmentSwitcher />}
+            </div>
           </header>
           {maintenance.enabled && (
             <div role="alert" className="flex items-start gap-3 border-b border-amber-300 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
               <TriangleAlert className="mt-0.5 size-5 shrink-0" />
               <div className="text-sm leading-5">
-                <p className="font-semibold">Maintenance mode is active</p>
-                <p>{maintenance.message || "Maintenance is in progress. Changes are temporarily disabled."}</p>
+                <p className="font-semibold">{t("pages.maintenanceMode")}</p>
+                <p>{maintenance.message || t("pages.maintenanceDisabledDescription")}</p>
               </div>
             </div>
           )}
@@ -82,6 +84,35 @@ export function AppLayout() {
         </EnvironmentProvider>
       </SidebarInset>
     </SidebarProvider>
+  )
+}
+
+function ColorThemeSwitcher() {
+  const { colorTheme, setColorTheme } = useColorTheme()
+  const selectedTheme = colorThemes.find((theme) => theme.value === colorTheme) ?? colorThemes[0]
+
+  return (
+    <Select value={colorTheme} onValueChange={(value) => {
+      const selectedTheme = colorThemes.find((theme) => theme.value === value)
+      if (selectedTheme) setColorTheme(selectedTheme.value)
+    }}>
+      <SelectTrigger className="w-9 px-2" showChevron={false} aria-label={`Color theme: ${selectedTheme.label}`}>
+        <Palette style={{ color: selectedTheme.swatches[0] }} aria-hidden="true" />
+        <SelectValue className="sr-only" />
+      </SelectTrigger>
+      <SelectContent>
+        {colorThemes.map((theme) => (
+          <SelectItem key={theme.value} value={theme.value}>
+            <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1" aria-hidden="true">
+                {theme.swatches.map((color) => <span key={color} className="size-3 rounded-full border border-black/10" style={{ backgroundColor: color }} />)}
+              </span>
+              {theme.label}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 

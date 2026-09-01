@@ -12,31 +12,24 @@ import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { api, ApiError } from "@/lib/api"
 import { useEnvironment } from "@/lib/environment"
+import { useTranslation } from "react-i18next"
 
 interface Flag {
   key: string
   name: string
+	description: string
+	tags: string[]
   flagType: string
   enabled: boolean
   archived: boolean
-  strategies: { isDefault: boolean; defaultVariant: string }[]
-}
-
-function defaultVariantOf(flag: Flag): string {
-  return flag.strategies.find((s) => s.isDefault)?.defaultVariant ?? ""
+  strategies: unknown[]
 }
 
 const FLAG_TYPES = ["boolean", "string", "number", "object"]
 type FlagAction = "archive" | "unarchive" | "delete"
 
-const FLAG_TYPE_HINT: Record<string, string> = {
-  boolean: "Starts with A/B variants.",
-  string: "Starts with a single default variant — add the rest in the editor.",
-  number: "Starts with a single default variant — add the rest in the editor.",
-  object: "Starts with a single default variant — add the rest in the editor.",
-}
-
 export function FlagsListPage() {
+  const { t } = useTranslation()
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -81,7 +74,7 @@ export function FlagsListPage() {
       setName("")
       setFlagType("boolean")
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to create flag"),
+    onError: (err) => setError(err instanceof ApiError ? err.message : t("flags.createFailed")),
   })
 
   function handleSubmit(e: FormEvent) {
@@ -91,13 +84,18 @@ export function FlagsListPage() {
   }
 
   const columns: DataTableColumn<Flag>[] = [
-    { key: "key", header: "Key", render: (f) => <code className="text-sm">{f.key}</code> },
-    { key: "name", header: "Name", render: (f) => f.name },
-    { key: "type", header: "Type", render: (f) => <Badge variant="secondary">{f.flagType}</Badge> },
-    { key: "default", header: "Default", render: (f) => defaultVariantOf(f) },
+    { key: "key", header: t("flags.key"), render: (f) => <code className="text-sm">{f.key}</code> },
+    { key: "name", header: t("flags.name"), render: (f) => f.name },
+		{
+			key: "tags",
+		header: t("flags.tags"),
+			render: (f) => f.tags.length ? <div className="flex max-w-48 flex-wrap gap-1">{f.tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}</div> : "—",
+		},
+    { key: "type", header: t("flags.type"), render: (f) => <Badge variant="secondary">{f.flagType}</Badge> },
+    { key: "strategies", header: t("flags.strategies"), render: (f) => f.strategies.length },
     {
       key: "enabled",
-      header: "Enabled",
+      header: t("flags.enabled"),
       render: (f) => (
         <Switch
           checked={f.enabled && !f.archived}
@@ -109,8 +107,8 @@ export function FlagsListPage() {
     },
     {
       key: "status",
-      header: "Status",
-      render: (f) => f.archived ? <Badge variant="secondary">Archived</Badge> : <Badge variant="outline">Active</Badge>,
+      header: t("flags.status"),
+      render: (f) => f.archived ? <Badge variant="secondary">{t("flags.archived")}</Badge> : <Badge variant="outline">{t("flags.active")}</Badge>,
     },
     {
       key: "actions",
@@ -119,9 +117,9 @@ export function FlagsListPage() {
       render: (f) => (
         <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
           <Button variant="ghost" size="sm" onClick={() => setPendingAction({ flag: f, action: f.archived ? "unarchive" : "archive" })}>
-            {f.archived ? "Unarchive" : "Archive"}
+            {f.archived ? t("flags.unarchive") : t("flags.archive")}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setPendingAction({ flag: f, action: "delete" })}>Delete</Button>
+          <Button variant="ghost" size="sm" onClick={() => setPendingAction({ flag: f, action: "delete" })}>{t("flags.delete")}</Button>
         </div>
       ),
     },
@@ -129,21 +127,21 @@ export function FlagsListPage() {
 
   const actionCopy: Record<FlagAction, { title: string; description: string; label: string; variant: "default" | "destructive" }> = {
     archive: {
-      title: `Archive "${pendingAction?.flag.key ?? ""}"?`,
-      description: "The flag will stop serving targeted values until it is unarchived.",
-      label: "Archive",
+      title: t("flags.archiveTitle", { key: pendingAction?.flag.key ?? "" }),
+      description: t("flags.archiveDescription"),
+      label: t("flags.archive"),
       variant: "default",
     },
     unarchive: {
-      title: `Unarchive "${pendingAction?.flag.key ?? ""}"?`,
-      description: "The flag will become available for evaluation again.",
-      label: "Unarchive",
+      title: t("flags.unarchiveTitle", { key: pendingAction?.flag.key ?? "" }),
+      description: t("flags.unarchiveDescription"),
+      label: t("flags.unarchive"),
       variant: "default",
     },
     delete: {
-      title: `Delete "${pendingAction?.flag.key ?? ""}"?`,
-      description: "All variants, targeting rules, and environment configuration for this flag will be permanently removed.",
-      label: "Delete",
+      title: t("flags.deleteTitle", { key: pendingAction?.flag.key ?? "" }),
+      description: t("flags.deleteDescription"),
+      label: t("flags.delete"),
       variant: "destructive",
     },
   }
@@ -151,27 +149,30 @@ export function FlagsListPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Feature flags</h1>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">{t("flags.title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("flags.intro")}</p>
+        </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button>New flag</Button>
+            <Button>{t("flags.new")}</Button>
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Create flag</DialogTitle>
+              <DialogTitle>{t("flags.createTitle")}</DialogTitle>
             </DialogHeader>
             <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="flag-key">Key</Label>
-                <Input id="flag-key" placeholder="new-checkout" value={key} onChange={(e) => setKey(e.target.value)} required />
+                <Label htmlFor="flag-key">{t("flags.key")}</Label>
+                <Input id="flag-key" placeholder={t("flags.keyPlaceholder")} value={key} onChange={(e) => setKey(e.target.value)} required />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="flag-name">Name</Label>
+                <Label htmlFor="flag-name">{t("flags.name")}</Label>
                 <Input id="flag-name" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div className="flex flex-col gap-2">
-                <Label>Type</Label>
+                <Label>{t("flags.type")}</Label>
                 <Select value={flagType} onValueChange={setFlagType}>
                   <SelectTrigger>
                     <SelectValue />
@@ -184,12 +185,12 @@ export function FlagsListPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">{FLAG_TYPE_HINT[flagType]}</p>
+                <p className="text-xs text-muted-foreground">{t("flags.typeHint")}</p>
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <DialogFooter>
                 <Button type="submit" disabled={createFlag.isPending}>
-                  Create
+                  {t("common.create")}
                 </Button>
               </DialogFooter>
             </form>
@@ -200,7 +201,7 @@ export function FlagsListPage() {
         columns={columns}
         rows={flags}
         rowKey={(f) => f.key}
-        emptyMessage={isLoading ? "Loading..." : "No flags yet"}
+        emptyMessage={isLoading ? t("common.loading") : t("flags.noFlags")}
         onRowClick={(f) => navigate(`/projects/${projectId}/flags/${f.key}`)}
       />
       <ConfirmDialog

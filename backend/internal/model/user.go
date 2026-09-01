@@ -11,7 +11,8 @@ type User struct {
 	Email        string    `gorm:"uniqueIndex;not null"`
 	PasswordHash string
 	Name         string
-	IsAdmin      bool `gorm:"not null;default:false"`
+	Locale       string `gorm:"not null;default:en"`
+	IsAdmin      bool   `gorm:"not null;default:false"`
 	// IsBootstrapAdmin identifies the break-glass account created by the seed
 	// command. It must never authenticate through a federated provider.
 	IsBootstrapAdmin bool `gorm:"not null;default:false"`

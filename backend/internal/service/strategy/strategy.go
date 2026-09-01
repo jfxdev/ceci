@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +27,6 @@ var errConditionMismatch = errors.New("condition operands mismatch")
 var (
 	ErrVariantTypeMismatch = errors.New("variant value does not match the flag type")
 	ErrUnknownFlagType     = errors.New("unknown flag type")
-	ErrDefaultCount        = errors.New("exactly one strategy must be marked as default")
 )
 
 // EvaluationResult is the outcome of evaluating a flag against a context.
@@ -61,24 +60,18 @@ func Flatten(flag *model.FeatureFlag) Flag {
 	return f
 }
 
-// sortedStrategies orders non-default strategies by Priority ahead of the
-// (single) default strategy, which is always evaluated last as the catch-all.
+// sortedStrategies returns strategies in their configured priority order.
+// Evaluation is first-match-wins and has no implicit catch-all strategy.
 func sortedStrategies(in []model.FlagStrategy) []model.FlagStrategy {
 	out := make([]model.FlagStrategy, len(in))
 	copy(out, in)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].IsDefault != out[j].IsDefault {
-			return !out[i].IsDefault
-		}
-		return out[i].Priority < out[j].Priority
-	})
+	slices.SortStableFunc(out, func(a, b model.FlagStrategy) int { return a.Priority - b.Priority })
 	return out
 }
 
 // Evaluate runs the targeting engine for a single flag: disabled check, then
 // ordered strategy matching (first match wins — any strategy whose
-// ConditionJSON matches the context, with optional per-strategy rollout),
-// falling back to the flag's default (catch-all) strategy.
+// ConditionJSON matches the context, with optional per-strategy rollout).
 func Evaluate(flag Flag, evalCtx map[string]any) EvaluationResult {
 	strategies := sortedStrategies(flag.Strategies)
 
@@ -94,26 +87,19 @@ func Evaluate(flag Flag, evalCtx map[string]any) EvaluationResult {
 		if !matched {
 			continue
 		}
-		return resolveStrategyMatch(flag.Key, st, len(strategies), evalCtx)
+		return resolveStrategyMatch(flag.Key, st, evalCtx)
 	}
 
-	// No strategy matched — shouldn't happen, since the default strategy has
-	// an empty condition and always matches. Fail closed rather than panic.
-	return EvaluationResult{Key: flag.Key, Reason: constants.ReasonError, ErrorCode: constants.ErrCodeGeneral}
+	// No strategy matched. This is an expected outcome for flags that have no
+	// catch-all strategy, not an evaluation failure.
+	return EvaluationResult{Key: flag.Key, Reason: constants.ReasonNoMatch}
 }
 
 // resolveStrategyMatch applies a matched strategy's rollout (if any) and
 // resolves the resulting variant against that strategy's own catalog.
-func resolveStrategyMatch(flagKey string, st model.FlagStrategy, totalStrategies int, evalCtx map[string]any) EvaluationResult {
+func resolveStrategyMatch(flagKey string, st model.FlagStrategy, evalCtx map[string]any) EvaluationResult {
 	variantKey := st.DefaultVariant
 	reason := constants.ReasonTargetingMatch
-	if st.IsDefault {
-		if totalStrategies == 1 {
-			reason = constants.ReasonStatic
-		} else {
-			reason = constants.ReasonDefault
-		}
-	}
 	if len(st.RolloutJSON) > 0 {
 		// Salted with the strategy ID (not just the flag key) so different
 		// strategies on the same flag bucket subjects independently.
@@ -126,12 +112,10 @@ func resolveStrategyMatch(flagKey string, st model.FlagStrategy, totalStrategies
 	return resultForStrategy(flagKey, st, variantKey, reason)
 }
 
-// DefaultResult resolves the flag's default (catch-all) strategy to its own
-// DefaultVariant, ignoring targeting/rollout — used for the disabled/archived
-// and prerequisite-failed paths. An environment that has never been
-// configured for this flag has no strategies at all (see Flatten); that's
-// still reported as the requested reason (e.g. DISABLED), just without a
-// resolvable variant, rather than as an error.
+// DefaultResult resolves a legacy default strategy, if one exists, ignoring
+// targeting/rollout. It is used for disabled, archived, and prerequisite-
+// failed paths. New flags have no implicit default, so those paths return the
+// requested reason without a variant when no legacy default is present.
 func DefaultResult(flag Flag, reason string) EvaluationResult {
 	for _, st := range flag.Strategies {
 		if st.IsDefault {
@@ -482,21 +466,14 @@ func DefaultVariantsFor(flagType string) ([]VariantInput, string) {
 	}
 }
 
-// Validate enforces the flag-wide type on every strategy's variant catalog
-// and requires exactly one strategy to be marked default (the catch-all
-// every flag needs a guaranteed fallback result from).
+// Validate enforces the flag-wide type on every strategy's variant catalog.
+// A strategy list may be empty; flags begin without rules and are evaluated
+// strictly in the order rules are subsequently added.
 func Validate(flagType string, strategies []Input) error {
-	defaults := 0
 	for _, st := range strategies {
-		if st.IsDefault {
-			defaults++
-		}
 		if err := ValidateVariantValues(flagType, st.Variants); err != nil {
 			return err
 		}
-	}
-	if defaults != 1 {
-		return ErrDefaultCount
 	}
 	return nil
 }
@@ -538,12 +515,6 @@ func ValidateVariantValues(flagType string, variants []VariantInput) error {
 func ToModels(flagID, environmentID uuid.UUID, in []Input) []model.FlagStrategy {
 	out := make([]model.FlagStrategy, 0, len(in))
 	for _, st := range in {
-		// The default strategy is a catch-all: force its condition empty
-		// regardless of what was supplied, so it always matches.
-		condition := st.ConditionJSON
-		if st.IsDefault {
-			condition = nil
-		}
 		out = append(out, model.FlagStrategy{
 			FlagID:         flagID,
 			EnvironmentID:  environmentID,
@@ -551,7 +522,7 @@ func ToModels(flagID, environmentID uuid.UUID, in []Input) []model.FlagStrategy 
 			Name:           st.Name,
 			Description:    st.Description,
 			IsDefault:      st.IsDefault,
-			ConditionJSON:  datatypes.JSON(condition),
+			ConditionJSON:  datatypes.JSON(st.ConditionJSON),
 			DefaultVariant: st.DefaultVariant,
 			RolloutJSON:    datatypes.JSON(st.RolloutJSON),
 			Variants:       toVariantModels(st.Variants),

@@ -13,7 +13,11 @@ type FeatureFlag struct {
 	Key                 string    `gorm:"index:idx_flag_project_key,unique;not null"`
 	Name                string
 	Description         string
-	FlagType            string `gorm:"not null"`
+	Tags                datatypes.JSONSlice[string] `gorm:"not null;default:'[]'"`
+	FlagType            string                      `gorm:"not null"`
+	CreatedByID         *uuid.UUID                  `gorm:"type:uuid;index"`
+	CreatedBy           *User                       `gorm:"foreignKey:CreatedByID"`
+	Collaborators       []FlagCollaborator          `gorm:"foreignKey:FlagID"`
 	PrerequisiteFlagKey string
 	PrerequisiteVariant string
 	Configs             []FlagEnvironmentConfig `gorm:"foreignKey:FlagID"`
@@ -21,6 +25,15 @@ type FeatureFlag struct {
 	ArchivedAt          *time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+}
+
+// FlagCollaborator records users who created or edited a feature flag.
+type FlagCollaborator struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
+	FlagID    uuid.UUID `gorm:"type:uuid;index:idx_flag_collaborator,unique;not null"`
+	UserID    uuid.UUID `gorm:"type:uuid;index:idx_flag_collaborator,unique;not null"`
+	User      User      `gorm:"foreignKey:UserID"`
+	CreatedAt time.Time
 }
 
 // FlagEnvironmentConfig holds the one part of a flag's behavior that's purely
@@ -41,10 +54,8 @@ type FlagEnvironmentConfig struct {
 // environment. A flag+environment holds an ordered list of strategies; at
 // eval time (see evaluateFlag in flag_evaluate.go) the first strategy whose
 // ConditionJSON matches the context wins, applying its own rollout and its
-// own variant catalog. Exactly one strategy per flag+environment must have
-// IsDefault set — it carries an empty ConditionJSON so it always matches,
-// guaranteeing a fallback result, and is always evaluated last regardless of
-// Priority.
+// own variant catalog. Strategies are evaluated by Priority; the first
+// condition that matches wins. A flag can have no strategies.
 type FlagStrategy struct {
 	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
 	FlagID        uuid.UUID `gorm:"type:uuid;index:idx_strategy_flag_env;not null"`
@@ -52,6 +63,8 @@ type FlagStrategy struct {
 	Priority      int       `gorm:"not null"`
 	Name          string
 	Description   string
+	// IsDefault is retained for compatibility with existing persisted rows.
+	// It does not affect strategy ordering or normal evaluation.
 	IsDefault     bool `gorm:"not null;default:false"`
 	ConditionJSON datatypes.JSON
 	// DefaultVariant is served when this strategy matches and either it has

@@ -8,6 +8,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { api } from "@/lib/api"
 import { useEnvironment } from "@/lib/environment"
+import { useTranslation } from "react-i18next"
 
 interface Flag {
   key: string
@@ -33,6 +34,7 @@ const chartConfig: ChartConfig = {
 }
 
 export function ProjectOverviewPage() {
+  const { t } = useTranslation()
   const { projectId } = useParams<{ projectId: string }>()
   const { envKey, envPath } = useEnvironment()
 
@@ -67,46 +69,50 @@ export function ProjectOverviewPage() {
   const columns: DataTableColumn<Flag>[] = [
     {
       key: "name",
-      header: "Name",
+      header: t("overview.name"),
       render: (f) => (
         <Link to={`/projects/${projectId}/flags/${f.key}`} className="font-medium hover:underline">
           {f.name}
         </Link>
       ),
     },
-    { key: "key", header: "Key", render: (f) => <code className="text-xs">{f.key}</code> },
-    { key: "flagType", header: "Type", render: (f) => f.flagType },
+    { key: "key", header: t("overview.key"), render: (f) => <code className="text-xs">{f.key}</code> },
+    { key: "flagType", header: t("overview.type"), render: (f) => f.flagType },
     {
       key: "enabled",
-      header: "Status",
-      render: (f) => <Badge variant={f.enabled ? "default" : "outline"}>{f.enabled ? "Enabled" : "Disabled"}</Badge>,
+      header: t("overview.status"),
+      render: (f) => <Badge variant={f.enabled ? "default" : "outline"}>{f.enabled ? t("overview.enabled") : t("overview.disabled")}</Badge>,
     },
   ]
 
   return (
     <div className="flex flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+      <div>
+        <h1 className="text-2xl font-semibold">{t("nav.overview")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("overview.intro")}</p>
+      </div>
       <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-4 dark:*:data-[slot=card]:bg-card">
         <Card>
           <CardHeader>
-            <CardDescription>Flags</CardDescription>
+            <CardDescription>{t("nav.flags")}</CardDescription>
             <CardTitle className="text-2xl font-semibold tabular-nums">{flagsLoading ? "…" : flags.length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Enabled flags</CardDescription>
+            <CardDescription>{t("overview.enabledFlags")}</CardDescription>
             <CardTitle className="text-2xl font-semibold tabular-nums">{flagsLoading ? "…" : enabledCount}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Parameters</CardDescription>
+            <CardDescription>{t("nav.parameters")}</CardDescription>
             <CardTitle className="text-2xl font-semibold tabular-nums">{parameters.length}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
-            <CardDescription>Members</CardDescription>
+            <CardDescription>{t("nav.members")}</CardDescription>
             <CardTitle className="text-2xl font-semibold tabular-nums">{members.length}</CardTitle>
           </CardHeader>
         </Card>
@@ -114,8 +120,8 @@ export function ProjectOverviewPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Flags by type</CardTitle>
-          <CardDescription>Breakdown of flag types in this project</CardDescription>
+          <CardTitle>{t("overview.flagsByType")}</CardTitle>
+          <CardDescription>{t("overview.breakdown")}</CardDescription>
         </CardHeader>
         <CardContent>
           <ChartContainer config={chartConfig} className="aspect-auto h-[220px] w-full">
@@ -131,11 +137,11 @@ export function ProjectOverviewPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent flags</CardTitle>
-          <CardDescription>Latest flags in this project</CardDescription>
+          <CardTitle>{t("overview.recentFlags")}</CardTitle>
+          <CardDescription>{t("overview.recentDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} rows={recentFlags} rowKey={(f) => f.key} emptyMessage="No flags yet" />
+          <DataTable columns={columns} rows={recentFlags} rowKey={(f) => f.key} emptyMessage={t("overview.noFlagsYet")} />
         </CardContent>
       </Card>
     </div>

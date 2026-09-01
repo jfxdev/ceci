@@ -34,6 +34,7 @@ const (
 	ReasonTargetingMatch     = "TARGETING_MATCH"
 	ReasonDefault            = "DEFAULT"
 	ReasonDisabled           = "DISABLED"
+	ReasonNoMatch            = "NO_MATCH"
 	ReasonError              = "ERROR"
 	ReasonPrerequisiteFailed = "PREREQUISITE_FAILED"
 	ReasonSplit              = "SPLIT"

@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Leaf } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { ApiError } from "@/lib/api"
+import { useTranslation } from "react-i18next"
 
 export function RegisterPage() {
   const { register } = useAuth()
@@ -15,6 +17,7 @@ export function RegisterPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const { t } = useTranslation()
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -24,7 +27,7 @@ export function RegisterPage() {
       await register(email, password, name)
       navigate("/projects")
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Registration failed")
+      setError(err instanceof ApiError ? err.message : t("auth.registrationFailed"))
     } finally {
       setLoading(false)
     }
@@ -34,20 +37,23 @@ export function RegisterPage() {
     <div className="flex min-h-svh items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Create your LeaFlag account</CardTitle>
+          <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Leaf className="size-5" aria-hidden="true" />
+          </div>
+          <CardTitle>{t("auth.registerTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{t("auth.name")}</Label>
               <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.email")}</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -59,12 +65,12 @@ export function RegisterPage() {
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading}>
-              {loading ? "Creating account..." : "Create account"}
+              {loading ? t("auth.creatingAccount") : t("auth.register")}
             </Button>
             <p className="text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
+              {t("auth.hasAccount")} {" "}
               <Link to="/login" className="underline">
-                Sign in
+                {t("auth.signIn")}
               </Link>
             </p>
           </form>

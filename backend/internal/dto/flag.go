@@ -1,6 +1,9 @@
 package dto
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type StrategyVariantInput struct {
 	Key   string          `json:"key" binding:"required"`
@@ -32,8 +35,9 @@ type CreateFlagRequest struct {
 }
 
 type UpdateFlagRequest struct {
-	Name                string          `json:"name"`
-	Description         string          `json:"description"`
+	Name                *string         `json:"name"`
+	Description         *string         `json:"description"`
+	Tags                *[]string       `json:"tags"`
 	Enabled             *bool           `json:"enabled"`
 	Strategies          []StrategyInput `json:"strategies"`
 	PrerequisiteFlagKey *string         `json:"prerequisiteFlagKey"`
@@ -61,10 +65,19 @@ type FlagDTO struct {
 	Key                 string        `json:"key"`
 	Name                string        `json:"name"`
 	Description         string        `json:"description"`
+	Tags                []string      `json:"tags"`
 	FlagType            string        `json:"flagType"`
 	Enabled             bool          `json:"enabled"`
 	Archived            bool          `json:"archived"`
 	Strategies          []StrategyDTO `json:"strategies"`
 	PrerequisiteFlagKey string        `json:"prerequisiteFlagKey,omitempty"`
 	PrerequisiteVariant string        `json:"prerequisiteVariant,omitempty"`
+	CreatedAt           time.Time     `json:"createdAt"`
+	CreatedBy           *FlagUserDTO  `json:"createdBy,omitempty"`
+	Collaborators       []FlagUserDTO `json:"collaborators"`
+}
+
+type FlagUserDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

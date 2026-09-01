@@ -10,6 +10,7 @@ import { RoleBadge, type ProjectRole } from "@/components/shared/role-badge"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { api, ApiError } from "@/lib/api"
+import { useTranslation } from "react-i18next"
 
 interface Member {
   userId: string
@@ -24,6 +25,7 @@ interface ProjectAccessGroup { groupId: string; name: string; description: strin
 const ROLES: ProjectRole[] = ["viewer", "editor", "admin", "owner"]
 
 export function MembersListPage() {
+  const { t } = useTranslation()
   const { projectId } = useParams<{ projectId: string }>()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -58,7 +60,7 @@ export function MembersListPage() {
       setEmail("")
       setRole("viewer")
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to add member"),
+    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.failedToAddMember")),
   })
 
   const updateRole = useMutation({
@@ -77,7 +79,7 @@ export function MembersListPage() {
   const linkGroup = useMutation({
     mutationFn: () => api.post(`/projects/${projectId}/access-groups`, { groupId, role: groupRole }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["project-access-groups", projectId] }); setGroupId(""); setGroupRole("viewer"); setGroupOpen(false) },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to link group"),
+    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.failedToLinkGroup")),
   })
   const updateGroupRole = useMutation({
     mutationFn: ({ id, role }: { id: string; role: ProjectRole }) => api.patch(`/projects/${projectId}/access-groups/${id}`, { role }),
@@ -101,11 +103,11 @@ export function MembersListPage() {
   }
 
   const columns: DataTableColumn<Member>[] = [
-    { key: "name", header: "Name", render: (m) => m.name },
-    { key: "email", header: "Email", render: (m) => m.email },
+    { key: "name", header: t("pages.name"), render: (m) => m.name },
+    { key: "email", header: t("pages.email"), render: (m) => m.email },
     {
       key: "role",
-      header: "Role",
+      header: t("pages.role"),
       render: (m) => (
         <Select value={m.role} onValueChange={(v) => updateRole.mutate({ userId: m.userId, role: v as ProjectRole })}>
           <SelectTrigger className="w-28" onClick={(e) => e.stopPropagation()}>
@@ -116,7 +118,7 @@ export function MembersListPage() {
           <SelectContent>
             {ROLES.map((r) => (
               <SelectItem key={r} value={r}>
-                {r}
+                <RoleBadge role={r} />
               </SelectItem>
             ))}
           </SelectContent>
@@ -128,7 +130,7 @@ export function MembersListPage() {
       header: "",
       render: (m) => (
         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setPendingRemove(m) }}>
-          Remove
+          {t("pages.remove")}
         </Button>
       ),
     },
@@ -138,24 +140,27 @@ export function MembersListPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Members</h1>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">{t("pages.membersTitle")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("pages.membersIntro")}</p>
+        </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button>Add member</Button>
+            <Button>{t("pages.addMember")}</Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add member</DialogTitle>
+              <DialogTitle>{t("pages.addMember")}</DialogTitle>
             </DialogHeader>
             <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="member-email">Email</Label>
+                <Label htmlFor="member-email">{t("pages.email")}</Label>
                 <Input id="member-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                <p className="text-xs text-muted-foreground">The user must already have a LeaFlag account.</p>
+                <p className="text-xs text-muted-foreground">{t("pages.userMustHaveAccount")}</p>
               </div>
               <div className="flex flex-col gap-2">
-                <Label>Role</Label>
+                <Label>{t("pages.role")}</Label>
                 <Select value={role} onValueChange={(v) => setRole(v as ProjectRole)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -163,7 +168,7 @@ export function MembersListPage() {
                   <SelectContent>
                     {ROLES.map((r) => (
                       <SelectItem key={r} value={r}>
-                        {r}
+                        <RoleBadge role={r} />
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -172,34 +177,34 @@ export function MembersListPage() {
               {error && <p className="text-sm text-destructive">{error}</p>}
               <DialogFooter>
                 <Button type="submit" disabled={addMember.isPending}>
-                  Add
+                  {t("common.create")}
                 </Button>
               </DialogFooter>
             </form>
           </DialogContent>
         </Dialog>
       </div>
-      <DataTable columns={columns} rows={members} rowKey={(m) => m.userId} emptyMessage={isLoading ? "Loading..." : "No members yet"} />
+      <DataTable columns={columns} rows={members} rowKey={(m) => m.userId} emptyMessage={isLoading ? t("common.loading") : t("pages.noMembers")} />
       <section className="rounded-xl border bg-card">
         <div className="flex items-center justify-between gap-4 border-b p-5">
-          <div><h2 className="font-semibold">Access groups</h2><p className="mt-1 text-sm text-muted-foreground">Give an entire team access to this project. Workspace administrators manage membership centrally.</p></div>
+          <div><h2 className="font-semibold">{t("pages.accessGroupsTitle")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("pages.accessGroupsIntro")}</p></div>
           <Dialog open={groupOpen} onOpenChange={setGroupOpen}>
-            <DialogTrigger asChild><Button variant="outline">Link group</Button></DialogTrigger>
-            <DialogContent><DialogHeader><DialogTitle>Link access group</DialogTitle></DialogHeader><form className="flex flex-col gap-4" onSubmit={handleGroupSubmit}>
-              <div className="flex flex-col gap-2"><Label>Group</Label><Select value={groupId} onValueChange={setGroupId}><SelectTrigger><SelectValue placeholder="Choose a group" /></SelectTrigger><SelectContent>{selectableGroups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}</SelectContent></Select></div>
-              <div className="flex flex-col gap-2"><Label>Project role</Label><Select value={groupRole} onValueChange={(value) => setGroupRole(value as ProjectRole)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ROLES.filter((role) => role !== "owner").map((role) => <SelectItem key={role} value={role}>{role}</SelectItem>)}</SelectContent></Select></div>
-              {error && <p className="text-sm text-destructive">{error}</p>}<DialogFooter><Button type="submit" disabled={!groupId || linkGroup.isPending}>Link group</Button></DialogFooter>
+            <DialogTrigger asChild><Button variant="outline">{t("pages.linkGroup")}</Button></DialogTrigger>
+            <DialogContent><DialogHeader><DialogTitle>{t("pages.linkAccessGroup")}</DialogTitle></DialogHeader><form className="flex flex-col gap-4" onSubmit={handleGroupSubmit}>
+              <div className="flex flex-col gap-2"><Label>{t("pages.group")}</Label><Select value={groupId} onValueChange={setGroupId}><SelectTrigger><SelectValue placeholder={t("pages.chooseGroup")} /></SelectTrigger><SelectContent>{selectableGroups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}</SelectContent></Select></div>
+              <div className="flex flex-col gap-2"><Label>{t("pages.projectRole")}</Label><Select value={groupRole} onValueChange={(value) => setGroupRole(value as ProjectRole)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ROLES.filter((role) => role !== "owner").map((role) => <SelectItem key={role} value={role}><RoleBadge role={role} /></SelectItem>)}</SelectContent></Select></div>
+              {error && <p className="text-sm text-destructive">{error}</p>}<DialogFooter><Button type="submit" disabled={!groupId || linkGroup.isPending}>{t("pages.linkGroup")}</Button></DialogFooter>
             </form></DialogContent>
           </Dialog>
         </div>
-        <div className="divide-y">{projectGroups.map((group) => <div key={group.groupId} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{group.name}</p>{group.description && <p className="text-sm text-muted-foreground">{group.description}</p>}</div><div className="flex items-center gap-2"><Select value={group.role} onValueChange={(value) => updateGroupRole.mutate({ id: group.groupId, role: value as ProjectRole })}><SelectTrigger className="w-28"><SelectValue /></SelectTrigger><SelectContent>{ROLES.filter((role) => role !== "owner").map((role) => <SelectItem key={role} value={role}><RoleBadge role={role} /></SelectItem>)}</SelectContent></Select><Button variant="ghost" size="sm" onClick={() => unlinkGroup.mutate(group.groupId)}>Unlink</Button></div></div>)}{projectGroups.length === 0 && <p className="p-5 text-sm text-muted-foreground">{isLoadingGroups ? "Loading groups…" : "No access groups linked to this project."}</p>}</div>
+        <div className="divide-y">{projectGroups.map((group) => <div key={group.groupId} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{group.name}</p>{group.description && <p className="text-sm text-muted-foreground">{group.description}</p>}</div><div className="flex items-center gap-2"><Select value={group.role} onValueChange={(value) => updateGroupRole.mutate({ id: group.groupId, role: value as ProjectRole })}><SelectTrigger className="w-28"><SelectValue /></SelectTrigger><SelectContent>{ROLES.filter((role) => role !== "owner").map((role) => <SelectItem key={role} value={role}><RoleBadge role={role} /></SelectItem>)}</SelectContent></Select><Button variant="ghost" size="sm" onClick={() => unlinkGroup.mutate(group.groupId)}>{t("pages.unlink")}</Button></div></div>)}{projectGroups.length === 0 && <p className="p-5 text-sm text-muted-foreground">{isLoadingGroups ? t("pages.loadingGroups") : t("pages.noGroupsLinked")}</p>}</div>
       </section>
       <ConfirmDialog
         open={!!pendingRemove}
         onOpenChange={(v) => !v && setPendingRemove(null)}
-        title={`Remove "${pendingRemove?.name}"?`}
-        description="They will lose access to this project."
-        confirmLabel="Remove"
+        title={t("pages.removeMemberTitle", { name: pendingRemove?.name ?? "" })}
+        description={t("pages.removeMemberDescription")}
+        confirmLabel={t("pages.remove")}
         loading={removeMember.isPending}
         onConfirm={() => pendingRemove && removeMember.mutate(pendingRemove.userId)}
       />

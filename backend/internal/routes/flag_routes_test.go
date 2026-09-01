@@ -42,10 +42,10 @@ func (f *fakeFlagService) List(ctx context.Context, projectID, environmentID uui
 func (f *fakeFlagService) Get(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error) {
 	return f.get, f.getErr
 }
-func (f *fakeFlagService) Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []flag.StrategyInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error) {
+func (f *fakeFlagService) Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []flag.StrategyInput, prerequisiteFlagKey, prerequisiteVariant string, actors ...uuid.UUID) (*model.FeatureFlag, error) {
 	return f.created, f.createErr
 }
-func (f *fakeFlagService) Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in flag.UpdateInput) (*model.FeatureFlag, error) {
+func (f *fakeFlagService) Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in flag.UpdateInput, actors ...uuid.UUID) (*model.FeatureFlag, error) {
 	return f.updated, f.updateErr
 }
 func (f *fakeFlagService) Delete(ctx context.Context, projectID uuid.UUID, key string) error {

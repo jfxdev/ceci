@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react"
 import { api, setAccessToken } from "@/lib/api"
+import i18n, { browserLocale, type AppLocale } from "@/lib/i18n"
 
 export interface CurrentUser {
   id: string
   email: string
   name: string
   isAdmin: boolean
+  locale: AppLocale
 }
 
 interface AuthContextValue {
@@ -14,6 +16,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name: string) => Promise<void>
   logout: () => Promise<void>
+  setLocale: (locale: AppLocale) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -32,7 +35,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const refreshed = await api.post<{ accessToken: string }>("/auth/refresh")
         setAccessToken(refreshed.accessToken)
         const me = await api.get<CurrentUser>("/me")
-        if (!cancelled) setUser(me)
+        if (!cancelled) {
+          setUser(me)
+          void i18n.changeLanguage(me.locale)
+        }
       } catch {
         if (!cancelled) setUser(null)
       } finally {
@@ -48,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await api.post<{ accessToken: string; user: CurrentUser }>("/auth/login", { email, password })
     setAccessToken(data.accessToken)
     setUser(data.user)
+    await i18n.changeLanguage(data.user.locale)
   }, [])
 
   const register = useCallback(async (email: string, password: string, name: string) => {
@@ -58,15 +65,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     setAccessToken(data.accessToken)
     setUser(data.user)
+    const locale = browserLocale()
+    if (data.user.locale !== locale) {
+      const user = await api.put<CurrentUser>("/me/preferences", { locale })
+      setUser(user)
+    }
+    await i18n.changeLanguage(locale)
   }, [])
 
   const logout = useCallback(async () => {
     await api.post("/auth/logout")
     setAccessToken(null)
     setUser(null)
+    await i18n.changeLanguage(browserLocale())
   }, [])
 
-  return <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>{children}</AuthContext.Provider>
+  const setLocale = useCallback(async (locale: AppLocale) => {
+    const user = await api.put<CurrentUser>("/me/preferences", { locale })
+    setUser(user)
+    await i18n.changeLanguage(locale)
+  }, [])
+
+  return <AuthContext.Provider value={{ user, isLoading, login, register, logout, setLocale }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

@@ -42,6 +42,17 @@ func TestUserRepository_FindByID(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
+func TestUserRepository_SetLocale(t *testing.T) {
+	repo := NewUserRepository(newTestDB(t))
+	ctx := context.Background()
+	u := &model.User{ID: uuid.New(), Email: "locale@b.com", PasswordHash: "hash"}
+	require.NoError(t, repo.Create(ctx, u))
+	require.NoError(t, repo.SetLocale(ctx, u.ID, "pt-BR"))
+	found, err := repo.FindByID(ctx, u.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "pt-BR", found.Locale)
+}
+
 func TestUserRepository_RefreshTokenLifecycle(t *testing.T) {
 	repo := NewUserRepository(newTestDB(t))
 	ctx := context.Background()

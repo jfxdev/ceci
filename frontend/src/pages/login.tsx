@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Leaf } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { ApiError } from "@/lib/api"
+import { useTranslation } from "react-i18next"
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -16,6 +18,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [oidcEnabled, setOIDCEnabled] = useState(false)
+  const { t } = useTranslation()
 
   useEffect(() => {
     fetch("/api/v1/auth/oidc/config", { credentials: "include" })
@@ -32,7 +35,7 @@ export function LoginPage() {
       await login(email, password)
       navigate("/projects")
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed")
+      setError(err instanceof ApiError ? err.message : t("auth.loginFailed"))
     } finally {
       setLoading(false)
     }
@@ -42,16 +45,19 @@ export function LoginPage() {
     <div className="flex min-h-svh items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Sign in to LeaFlag</CardTitle>
+          <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Leaf className="size-5" aria-hidden="true" />
+          </div>
+          <CardTitle>{t("auth.loginTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.email")}</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -61,18 +67,18 @@ export function LoginPage() {
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            {searchParams.get("sso_error") === "1" && <p className="text-sm text-destructive">Unable to sign in with your identity provider.</p>}
+            {searchParams.get("sso_error") === "1" && <p className="text-sm text-destructive">{t("auth.ssoFailed")}</p>}
             <Button type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? t("auth.signingIn") : t("auth.signIn")}
             </Button>
             {oidcEnabled && <>
-              <div className="relative py-1 text-center text-xs text-muted-foreground before:absolute before:left-0 before:right-0 before:top-1/2 before:border-t"><span className="relative bg-card px-2">or</span></div>
-              <Button type="button" variant="outline" onClick={() => { window.location.assign("/api/v1/auth/oidc/login") }}>Sign in with SSO</Button>
+              <div className="relative py-1 text-center text-xs text-muted-foreground before:absolute before:left-0 before:right-0 before:top-1/2 before:border-t"><span className="relative bg-card px-2">{t("auth.or")}</span></div>
+              <Button type="button" variant="outline" onClick={() => { window.location.assign("/api/v1/auth/oidc/login") }}>{t("auth.signInWithSSO")}</Button>
             </>}
             <p className="text-center text-sm text-muted-foreground">
-              Don't have an account?{" "}
+              {t("auth.noAccount")} {" "}
               <Link to="/register" className="underline">
-                Create one
+                {t("auth.createOne")}
               </Link>
             </p>
           </form>
