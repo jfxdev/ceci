@@ -82,6 +82,31 @@ func TestFlagRepository_ReplaceStrategies_Overwrites(t *testing.T) {
 	assert.Len(t, found.Strategies[0].Variants, 2)
 }
 
+func TestFlagRepository_ReplaceStrategies_RejectsDuplicatePriorities(t *testing.T) {
+	repo := NewFlagRepository(newTestDB(t))
+	ctx := context.Background()
+	projectID := uuid.New()
+	envID := uuid.New()
+
+	f := &model.FeatureFlag{ProjectID: projectID, Key: "f1", FlagType: "boolean"}
+	require.NoError(t, repo.Create(ctx, f))
+
+	err := repo.ReplaceStrategies(ctx, f.ID, envID, []model.FlagStrategy{
+		defaultStrategy(f.ID, envID, "on"),
+		defaultStrategy(f.ID, envID, "off"),
+	})
+	assert.ErrorIs(t, err, ErrDuplicateStrategyPriority)
+}
+
+func TestFlagStrategyPriorityHasDatabaseConstraint(t *testing.T) {
+	db := newTestDB(t)
+	strategy := model.FlagStrategy{FlagID: uuid.New(), EnvironmentID: uuid.New(), Priority: 1, DefaultVariant: "on"}
+	require.NoError(t, db.Create(&strategy).Error)
+
+	duplicate := model.FlagStrategy{FlagID: strategy.FlagID, EnvironmentID: strategy.EnvironmentID, Priority: strategy.Priority, DefaultVariant: "off"}
+	assert.Error(t, db.Create(&duplicate).Error)
+}
+
 func TestFlagRepository_ReplaceStrategies_ScopedToEnvironment(t *testing.T) {
 	repo := NewFlagRepository(newTestDB(t))
 	ctx := context.Background()

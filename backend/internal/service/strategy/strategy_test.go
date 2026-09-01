@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"math"
 	"testing"
 
 	"github.com/google/uuid"
@@ -83,6 +84,16 @@ func TestEvaluate_RulePriorityOrder(t *testing.T) {
 	)
 	res := Evaluate(f, map[string]any{})
 	assert.Equal(t, "on", res.Variant, "lower priority number should be evaluated first")
+}
+
+func TestEvaluate_RulePriorityOrderAtIntegerExtremes(t *testing.T) {
+	f := Flag{Key: "new-checkout", Enabled: true, Strategies: []model.FlagStrategy{
+		targetingStrategy(math.MaxInt, `true`, "off"),
+		targetingStrategy(-1, `true`, "on"),
+	}}
+
+	res := Evaluate(f, map[string]any{})
+	assert.Equal(t, "on", res.Variant)
 }
 
 func TestEvaluate_AndOrOperators(t *testing.T) {
@@ -279,6 +290,6 @@ func TestValidateStrategies_AllowsEmptyAndDoesNotRequireDefault(t *testing.T) {
 	assert.NoError(t, Validate(constants.FlagTypeBoolean, noDefault))
 
 	twoDefaults := append(oneDefault, oneDefault[0])
-	assert.NoError(t, Validate(constants.FlagTypeBoolean, twoDefaults))
+	assert.ErrorIs(t, Validate(constants.FlagTypeBoolean, twoDefaults), ErrDuplicatePriority)
 	assert.NoError(t, Validate(constants.FlagTypeBoolean, nil))
 }

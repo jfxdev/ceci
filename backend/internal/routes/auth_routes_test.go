@@ -119,6 +119,7 @@ func TestLoginRoute_BadRequest(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"validation.invalid_login_request"`)
 }
 
 func TestMeRoute_Unauthorized(t *testing.T) {
@@ -216,6 +217,7 @@ func TestRegisterRoute_BadRequest(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"validation.invalid_registration_request"`)
 }
 
 func TestRefreshRoute_MissingCookie(t *testing.T) {

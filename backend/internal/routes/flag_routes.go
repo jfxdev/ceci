@@ -65,7 +65,7 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		f, err := flags.Create(c.Request.Context(), projectID, environmentID, req.Key, req.Name, req.Description, req.FlagType, enabled,
 			toStrategyInputs(req.Strategies), req.PrerequisiteFlagKey, req.PrerequisiteVariant, userID)
 		if err != nil {
-			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) {
+			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrDuplicatePriority) {
 				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 				return
 			}
@@ -107,7 +107,7 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "flag not found"})
 				return
 			}
-			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) {
+			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrDuplicatePriority) {
 				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 				return
 			}

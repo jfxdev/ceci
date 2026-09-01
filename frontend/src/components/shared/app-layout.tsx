@@ -88,6 +88,7 @@ export function AppLayout() {
 }
 
 function ColorThemeSwitcher() {
+	const { t } = useTranslation()
   const { colorTheme, setColorTheme } = useColorTheme()
   const selectedTheme = colorThemes.find((theme) => theme.value === colorTheme) ?? colorThemes[0]
 
@@ -96,7 +97,7 @@ function ColorThemeSwitcher() {
       const selectedTheme = colorThemes.find((theme) => theme.value === value)
       if (selectedTheme) setColorTheme(selectedTheme.value)
     }}>
-      <SelectTrigger className="w-9 px-2" showChevron={false} aria-label={`Color theme: ${selectedTheme.label}`}>
+	      <SelectTrigger className="w-9 px-2" showChevron={false} aria-label={`${t("pages.colorTheme")}: ${t(selectedTheme.labelKey)}`}>
         <Palette style={{ color: selectedTheme.swatches[0] }} aria-hidden="true" />
         <SelectValue className="sr-only" />
       </SelectTrigger>
@@ -107,7 +108,7 @@ function ColorThemeSwitcher() {
               <span className="flex items-center gap-1" aria-hidden="true">
                 {theme.swatches.map((color) => <span key={color} className="size-3 rounded-full border border-black/10" style={{ backgroundColor: color }} />)}
               </span>
-              {theme.label}
+	              {t(theme.labelKey)}
             </span>
           </SelectItem>
         ))}

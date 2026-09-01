@@ -35,6 +35,7 @@ type (
 var (
 	ErrVariantTypeMismatch = strategy.ErrVariantTypeMismatch
 	ErrUnknownFlagType     = strategy.ErrUnknownFlagType
+	ErrDuplicatePriority   = strategy.ErrDuplicatePriority
 )
 
 type Service struct {

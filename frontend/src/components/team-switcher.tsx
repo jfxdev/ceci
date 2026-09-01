@@ -53,7 +53,7 @@ export function TeamSwitcher() {
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{activeProject?.name ?? "LeaFlag"}</span>
-                <span className="truncate text-xs">{activeProject?.slug ?? t("projects.title")}</span>
+	              <span className="truncate text-xs">{activeProject?.slug ?? t("projects.selectProject")}</span>
               </div>
               <ChevronsUpDown className="ml-auto" />
             </SidebarMenuButton>

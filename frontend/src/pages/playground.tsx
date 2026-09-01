@@ -11,7 +11,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { MultiSelect } from "@/components/shared/multi-select"
 import { api, ApiError } from "@/lib/api"
 import { useEnvironment } from "@/lib/environment"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 
 interface Flag {
   key: string
@@ -42,14 +42,14 @@ const DEFAULT_CONTEXT = `{
 }`
 
 const STATUS_LEGEND = [
-  { status: "TARGETING_MATCH", description: "A standard strategy matched this context." },
-  { status: "SPLIT", description: "A gradual rollout matched and selected this variant." },
-  { status: "NO_MATCH", description: "No strategy matched the context, so no value was served." },
-  { status: "DISABLED", description: "The flag is disabled in this environment." },
-  { status: "PREREQUISITE_FAILED", description: "The flag prerequisite was not met." },
-  { status: "DEFAULT", description: "A legacy default strategy supplied the value." },
-  { status: "STATIC", description: "A static strategy supplied the value." },
-  { status: "ERROR", description: "The evaluation could not be completed." },
+	{ status: "TARGETING_MATCH", descriptionKey: "pages.statusTargetingMatch" },
+	{ status: "SPLIT", descriptionKey: "pages.statusSplit" },
+	{ status: "NO_MATCH", descriptionKey: "pages.statusNoMatch" },
+	{ status: "DISABLED", descriptionKey: "pages.statusDisabled" },
+	{ status: "PREREQUISITE_FAILED", descriptionKey: "pages.statusPrerequisiteFailed" },
+	{ status: "DEFAULT", descriptionKey: "pages.statusDefault" },
+	{ status: "STATIC", descriptionKey: "pages.statusStatic" },
+	{ status: "ERROR", descriptionKey: "pages.statusError" },
 ] as const
 
 export function PlaygroundPage() {
@@ -121,8 +121,9 @@ export function PlaygroundPage() {
       return
     }
 
-    setContextText(JSON.stringify({ ...context, [field.key]: value }, null, 2))
-    setError(null)
+	setContextText(JSON.stringify({ ...context, [field.key]: value }, null, 2))
+	setError(null)
+	evaluate.reset()
   }
 
   function selectEvaluationEnvironment(key: string) {
@@ -152,11 +153,11 @@ export function PlaygroundPage() {
       header: t("pages.possibleValues"),
       render: (r) => <code className="text-sm">{r.value === undefined ? "-" : JSON.stringify(r.value)}</code>,
     },
-    { key: "variant", header: "Variant", render: (r) => r.variant ?? "-" },
-    { key: "reason", header: "Reason", render: (r) => <Badge variant="secondary">{r.reason}</Badge> },
+	{ key: "variant", header: t("pages.variant"), render: (r) => r.variant ?? "-" },
+	{ key: "reason", header: t("pages.reason"), render: (r) => <Badge variant="secondary">{r.reason}</Badge> },
     {
       key: "error",
-      header: "Error",
+		 header: t("pages.error"),
       render: (r) => (r.errorCode ? <span className="text-sm text-destructive">{r.errorCode}</span> : "-"),
     },
   ]
@@ -169,7 +170,7 @@ export function PlaygroundPage() {
         <Card className="mt-2 border-primary/20 bg-primary/5">
           <CardContent className="flex items-center gap-2 py-1.5 text-sm text-muted-foreground">
             <Info className="size-4 shrink-0 text-primary" aria-hidden="true" />
-            <p><span className="font-medium text-foreground">Gradual rollouts are deterministic.</span>{" "}The same <code>targetingKey</code> always receives the same variant. Change it to test another rollout bucket.</p>
+	            <p><Trans i18nKey="pages.playgroundDeterministic" components={{ strong: <span className="font-medium text-foreground" />, code: <code /> }} /></p>
           </CardContent>
         </Card>
       </div>
@@ -202,7 +203,7 @@ export function PlaygroundPage() {
               id="playground-context"
               rows={8}
               value={contextText}
-              onChange={(e) => setContextText(e.target.value)}
+	              onChange={(e) => { setContextText(e.target.value); evaluate.reset() }}
               spellCheck={false}
             />
             {error && <p className="text-sm text-destructive">{error}</p>}
@@ -251,7 +252,7 @@ export function PlaygroundPage() {
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label htmlFor="playground-context-value" className="text-xs font-medium">Value</label>
+	                      <label htmlFor="playground-context-value" className="text-xs font-medium">{t("pages.contextValue")}</label>
                       <Select value={selectedContextValue} onValueChange={selectContextValue} disabled={!selectedContext || selectedContext.values.length === 0}>
                         <SelectTrigger id="playground-context-value">
                           <SelectValue placeholder={selectedContext ? selectedContext.values.length ? t("pages.selectValue") : t("pages.noPredefinedValues") : t("pages.selectContextFirst")} />
@@ -277,10 +278,10 @@ export function PlaygroundPage() {
               </CardHeader>
               <CardContent>
                 <dl className="flex flex-col gap-3">
-                  {STATUS_LEGEND.map(({ status, description }) => (
+	                  {STATUS_LEGEND.map(({ status, descriptionKey }) => (
                     <div key={status} className="flex flex-col gap-1">
                       <dt><Badge variant="secondary">{status}</Badge></dt>
-                      <dd className="text-xs leading-5 text-muted-foreground">{description}</dd>
+	                      <dd className="text-xs leading-5 text-muted-foreground">{t(descriptionKey)}</dd>
                     </div>
                   ))}
                 </dl>

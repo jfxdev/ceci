@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { RoleBadge, type ProjectRole } from "@/components/shared/role-badge"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { api, ApiError } from "@/lib/api"
+import { api } from "@/lib/api"
+import { alertMessageFromError } from "@/lib/alerts"
 import { useTranslation } from "react-i18next"
 
 interface Member {
@@ -60,7 +61,7 @@ export function MembersListPage() {
       setEmail("")
       setRole("viewer")
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.failedToAddMember")),
+	    onError: (err) => setError(alertMessageFromError(err, t("pages.failedToAddMember"))),
   })
 
   const updateRole = useMutation({
@@ -79,7 +80,7 @@ export function MembersListPage() {
   const linkGroup = useMutation({
     mutationFn: () => api.post(`/projects/${projectId}/access-groups`, { groupId, role: groupRole }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["project-access-groups", projectId] }); setGroupId(""); setGroupRole("viewer"); setGroupOpen(false) },
-    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.failedToLinkGroup")),
+	    onError: (err) => setError(alertMessageFromError(err, t("pages.failedToLinkGroup"))),
   })
   const updateGroupRole = useMutation({
     mutationFn: ({ id, role }: { id: string; role: ProjectRole }) => api.patch(`/projects/${projectId}/access-groups/${id}`, { role }),

@@ -1,6 +1,7 @@
 import { useId, useMemo } from "react"
 
 import { Input } from "@/components/ui/input"
+import { useTranslation } from "react-i18next"
 
 interface AttributeInputProps {
   attributes: string[]
@@ -9,6 +10,7 @@ interface AttributeInputProps {
 }
 
 function AttributeInput({ attributes, value, onChange }: AttributeInputProps) {
+	const { t } = useTranslation()
   const listId = useId()
   const options = useMemo(() => [...new Set(attributes)].sort(), [attributes])
   const isNewAttribute = Boolean(value.trim()) && !options.includes(value.trim())
@@ -16,9 +18,9 @@ function AttributeInput({ attributes, value, onChange }: AttributeInputProps) {
   return (
     <div className="relative w-64 shrink-0">
       <Input
-        aria-label="Attribute"
+	        aria-label={t("pages.attribute")}
         list={listId}
-        placeholder="attribute (e.g. plan)"
+	        placeholder={t("pages.attributePlaceholder")}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className={isNewAttribute ? "pr-14" : undefined}
@@ -28,7 +30,7 @@ function AttributeInput({ attributes, value, onChange }: AttributeInputProps) {
       </datalist>
       {isNewAttribute && (
         <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-primary">
-          New
+	          {t("pages.newBadge")}
         </span>
       )}
     </div>

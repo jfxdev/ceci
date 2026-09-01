@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { api, ApiError } from "@/lib/api"
+import { api } from "@/lib/api"
+import { alertMessageFromError } from "@/lib/alerts"
 import { useTranslation } from "react-i18next"
 
 interface ContextFieldValue {
@@ -74,7 +75,7 @@ export function ContextFieldsPage() {
       invalidate()
       closeDialog()
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.createContextField")),
+	    onError: (err) => setError(alertMessageFromError(err, t(editing ? "pages.saveContextFieldFailed" : "pages.createContextFieldFailed"))),
   })
 
   const deleteField = useMutation({
@@ -147,15 +148,15 @@ export function ContextFieldsPage() {
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="context-description">{t("pages.description")}</Label>
-                <Textarea id="context-description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Where this attribute comes from and how it is used." />
+	                <Textarea id="context-description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder={t("pages.contextDescriptionPlaceholder")} />
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between"><Label>{t("pages.possibleValues")}</Label><Button type="button" variant="ghost" size="sm" onClick={() => setForm((current) => ({ ...current, values: [...current.values, { value: "", description: "" }] }))}>{t("pages.addValue")}</Button></div>
                 <p className="text-xs text-muted-foreground">{t("pages.optionalValues")}</p>
                 {form.values.map((value, index) => (
                   <div key={index} className="flex gap-2">
-                    <Input aria-label={`Value ${index + 1}`} value={value.value} placeholder="Value" onChange={(event) => updateValue(index, { value: event.target.value })} />
-                    <Input aria-label={`Value ${index + 1} description`} value={value.description ?? ""} placeholder="Description" onChange={(event) => updateValue(index, { description: event.target.value })} />
+	                    <Input aria-label={t("pages.contextValueAria", { index: index + 1 })} value={value.value} placeholder={t("pages.contextValue")} onChange={(event) => updateValue(index, { value: event.target.value })} />
+	                    <Input aria-label={t("pages.contextValueDescriptionAria", { index: index + 1 })} value={value.description ?? ""} placeholder={t("pages.description")} onChange={(event) => updateValue(index, { description: event.target.value })} />
                     <Button type="button" variant="ghost" size="sm" onClick={() => setForm((current) => ({ ...current, values: current.values.filter((_, i) => i !== index) }))}>{t("pages.remove")}</Button>
                   </div>
                 ))}

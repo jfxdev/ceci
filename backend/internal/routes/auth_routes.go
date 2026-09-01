@@ -37,7 +37,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, authSvc authService) {
 	rg.POST("/auth/login", loginRateLimit, func(c *gin.Context) {
 		var req dto.LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error(), Code: "validation.invalid_login_request"})
 			return
 		}
 		accessToken, refreshToken, user, err := authSvc.Login(c.Request.Context(), req.Email, req.Password)
@@ -57,7 +57,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, authSvc authService) {
 	rg.POST("/auth/register", registerRateLimit, func(c *gin.Context) {
 		var req dto.RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error(), Code: "validation.invalid_registration_request"})
 			return
 		}
 		if _, err := authSvc.Register(c.Request.Context(), req.Email, req.Password, req.Name); err != nil {

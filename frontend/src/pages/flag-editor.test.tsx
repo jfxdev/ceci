@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { conditionToLeaf, conditionToRule, leafToCondition, ruleToCondition, type RuleRow } from "./flag-editor"
+import { conditionToLeaf, conditionToRule, isEditableCondition, leafToCondition, ruleToCondition, type RuleRow } from "./flag-editor"
 
 describe("leafToCondition / conditionToLeaf round-trip", () => {
   it("round-trips a plain comparison", () => {
@@ -170,5 +170,16 @@ describe("ruleToCondition / conditionToRule round-trip", () => {
       ],
     })
     expect(conditionToRule(condition)).toEqual({ combinator: "or", conditions: rule.conditions })
+  })
+})
+
+describe("isEditableCondition", () => {
+  it("rejects nested groups so the editor preserves their original JSONLogic", () => {
+    expect(isEditableCondition({
+      and: [
+        { "==": [{ var: "plan" }, "pro"] },
+        { or: [{ "==": [{ var: "country" }, "BR"] }, { and: [{ "==": [{ var: "role" }, "admin"] }] }] },
+      ],
+    })).toBe(false)
   })
 })

@@ -27,6 +27,7 @@ var errConditionMismatch = errors.New("condition operands mismatch")
 var (
 	ErrVariantTypeMismatch = errors.New("variant value does not match the flag type")
 	ErrUnknownFlagType     = errors.New("unknown flag type")
+	ErrDuplicatePriority   = errors.New("strategy priorities must be unique")
 )
 
 // EvaluationResult is the outcome of evaluating a flag against a context.
@@ -65,7 +66,16 @@ func Flatten(flag *model.FeatureFlag) Flag {
 func sortedStrategies(in []model.FlagStrategy) []model.FlagStrategy {
 	out := make([]model.FlagStrategy, len(in))
 	copy(out, in)
-	slices.SortStableFunc(out, func(a, b model.FlagStrategy) int { return a.Priority - b.Priority })
+	slices.SortStableFunc(out, func(a, b model.FlagStrategy) int {
+		switch {
+		case a.Priority < b.Priority:
+			return -1
+		case a.Priority > b.Priority:
+			return 1
+		default:
+			return 0
+		}
+	})
 	return out
 }
 
@@ -470,7 +480,12 @@ func DefaultVariantsFor(flagType string) ([]VariantInput, string) {
 // A strategy list may be empty; flags begin without rules and are evaluated
 // strictly in the order rules are subsequently added.
 func Validate(flagType string, strategies []Input) error {
+	priorities := make(map[int]struct{}, len(strategies))
 	for _, st := range strategies {
+		if _, exists := priorities[st.Order]; exists {
+			return ErrDuplicatePriority
+		}
+		priorities[st.Order] = struct{}{}
 		if err := ValidateVariantValues(flagType, st.Variants); err != nil {
 			return err
 		}

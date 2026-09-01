@@ -59,7 +59,7 @@ export function ProjectSettingsPage() {
   }
 
   const columns: DataTableColumn<APIKey>[] = [
-    { key: "label", header: "Label", render: (key) => key.label },
+	    { key: "label", header: t("pages.apiKeyLabel"), render: (key) => key.label },
     { key: "prefix", header: t("overview.key"), render: (key) => <code className="text-sm">{key.prefix}…</code> },
     { key: "status", header: t("pages.status"), render: (key) => (key.revoked ? t("pages.revoke") : t("pages.active")) },
     {
@@ -112,7 +112,7 @@ export function ProjectSettingsPage() {
               ) : (
                 <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="key-label">Label</Label>
+	                    <Label htmlFor="key-label">{t("pages.apiKeyLabel")}</Label>
                     <Input id="key-label" placeholder="CI" value={label} onChange={(event) => setLabel(event.target.value)} required />
                   </div>
                   <DialogFooter><Button type="submit" disabled={createKey.isPending || !label.trim()}>{createKey.isPending ? t("projects.creating") : t("pages.createAPIKey")}</Button></DialogFooter>

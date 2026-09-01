@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 
 export const colorThemes = [
-  { value: "green", label: "Green", swatches: ["#059669", "#d1fae5", "#a7f3d0"] },
-  { value: "blue", label: "Blue", swatches: ["#2563eb", "#dbeafe", "#bfdbfe"] },
-  { value: "violet", label: "Violet", swatches: ["#7c3aed", "#ede9fe", "#ddd6fe"] },
-  { value: "orange", label: "Orange", swatches: ["#ea580c", "#ffedd5", "#fed7aa"] },
-  { value: "rose", label: "Rose", swatches: ["#e11d48", "#ffe4e6", "#fecdd3"] },
+  { value: "green", labelKey: "pages.colorThemeGreen", swatches: ["#059669", "#d1fae5", "#a7f3d0"] },
+  { value: "blue", labelKey: "pages.colorThemeBlue", swatches: ["#2563eb", "#dbeafe", "#bfdbfe"] },
+  { value: "violet", labelKey: "pages.colorThemeViolet", swatches: ["#7c3aed", "#ede9fe", "#ddd6fe"] },
+  { value: "orange", labelKey: "pages.colorThemeOrange", swatches: ["#ea580c", "#ffedd5", "#fed7aa"] },
+  { value: "rose", labelKey: "pages.colorThemeRose", swatches: ["#e11d48", "#ffe4e6", "#fecdd3"] },
 ] as const
 
 export type ColorTheme = (typeof colorThemes)[number]["value"]

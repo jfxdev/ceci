@@ -12,6 +12,8 @@ import (
 	"leaflag/backend/internal/model"
 )
 
+var ErrDuplicateStrategyPriority = errors.New("strategy priorities must be unique")
+
 type FlagRepository interface {
 	List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error)
 	FindByKey(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error)
@@ -161,6 +163,13 @@ func deleteStrategiesAndVariants(tx *gorm.DB, scopeQuery string, scopeArgs ...an
 }
 
 func (r *postgresFlagRepository) ReplaceStrategies(ctx context.Context, flagID, environmentID uuid.UUID, strategies []model.FlagStrategy) error {
+	priorities := make(map[int]struct{}, len(strategies))
+	for _, strategy := range strategies {
+		if _, exists := priorities[strategy.Priority]; exists {
+			return ErrDuplicateStrategyPriority
+		}
+		priorities[strategy.Priority] = struct{}{}
+	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := deleteStrategiesAndVariants(tx, "flag_id = ? AND environment_id = ?", flagID, environmentID); err != nil {
 			return err

@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { api, ApiError } from "@/lib/api"
+import { api } from "@/lib/api"
+import { alertMessageFromError } from "@/lib/alerts"
 import { useEnvironment, type Environment } from "@/lib/environment"
 import { useTranslation } from "react-i18next"
 
@@ -38,7 +39,7 @@ export function EnvironmentListPage() {
       setName("")
       setError(null)
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.createEnvironment")),
+	    onError: (err) => setError(alertMessageFromError(err, t("pages.createEnvironmentFailed"))),
   })
 
   const renameEnvironment = useMutation({
@@ -128,7 +129,7 @@ export function EnvironmentListPage() {
           <p className="text-sm font-medium text-primary">{t("pages.projectConfiguration")}</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t("pages.environments")}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            {t("pages.contextsIntro")}
+	            {t("pages.environmentsIntro")}
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>

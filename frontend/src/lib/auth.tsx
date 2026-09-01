@@ -67,8 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user)
     const locale = browserLocale()
     if (data.user.locale !== locale) {
-      const user = await api.put<CurrentUser>("/me/preferences", { locale })
-      setUser(user)
+      void api.put<CurrentUser>("/me/preferences", { locale }).then(setUser).catch(() => undefined)
     }
     await i18n.changeLanguage(locale)
   }, [])

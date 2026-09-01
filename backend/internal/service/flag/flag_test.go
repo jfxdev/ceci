@@ -250,6 +250,22 @@ func TestFlagService_Update_AllowsStrategiesWithoutDefault(t *testing.T) {
 	assert.False(t, updated.Strategies[0].IsDefault)
 }
 
+func TestFlagService_RejectsDuplicateStrategyPriorities(t *testing.T) {
+	repo := newFakeFlagRepository()
+	svc := NewService(repo)
+	ctx := context.Background()
+	projectID := uuid.New()
+	envID := uuid.New()
+	strategies := []StrategyInput{
+		{Order: 1, DefaultVariant: "on", Variants: []StrategyVariantInput{{Key: "on", Value: []byte("true")}}},
+		{Order: 1, DefaultVariant: "off", Variants: []StrategyVariantInput{{Key: "off", Value: []byte("false")}}},
+	}
+
+	_, err := svc.Create(ctx, projectID, envID, "f1", "F1", "", "boolean", true, strategies, "", "")
+	assert.ErrorIs(t, err, ErrDuplicatePriority)
+	assert.Empty(t, repo.byProjectAndKey)
+}
+
 func TestFlagService_EvaluateAll(t *testing.T) {
 	repo := newFakeFlagRepository()
 	svc := NewService(repo)

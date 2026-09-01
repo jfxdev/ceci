@@ -58,9 +58,9 @@ type FlagEnvironmentConfig struct {
 // condition that matches wins. A flag can have no strategies.
 type FlagStrategy struct {
 	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
-	FlagID        uuid.UUID `gorm:"type:uuid;index:idx_strategy_flag_env;not null"`
-	EnvironmentID uuid.UUID `gorm:"type:uuid;index:idx_strategy_flag_env;not null"`
-	Priority      int       `gorm:"not null"`
+	FlagID        uuid.UUID `gorm:"type:uuid;index:idx_strategy_flag_env_priority,unique;not null"`
+	EnvironmentID uuid.UUID `gorm:"type:uuid;index:idx_strategy_flag_env_priority,unique;not null"`
+	Priority      int       `gorm:"index:idx_strategy_flag_env_priority,unique;not null"`
 	Name          string
 	Description   string
 	// IsDefault is retained for compatibility with existing persisted rows.

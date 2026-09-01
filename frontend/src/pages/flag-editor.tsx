@@ -39,12 +39,12 @@ const OPERATORS = [
 type Operator = (typeof OPERATORS)[number]
 
 const OPERATOR_PLACEHOLDERS: Partial<Record<Operator, string>> = {
-  in: "value (comma-separated for 'in')",
-  "not in": "value (comma-separated)",
-  matches: "regex pattern",
-  "semver>": "1.2.3",
-  "semver<": "1.2.3",
-  "semver=": "1.2.3",
+	in: "flags.inValuePlaceholder",
+	"not in": "flags.inValuePlaceholder",
+	matches: "flags.regexPlaceholder",
+	"semver>": "flags.versionPlaceholder",
+	"semver<": "flags.versionPlaceholder",
+	"semver=": "flags.versionPlaceholder",
 }
 
 const COMBINATORS = ["and", "or"] as const
@@ -104,7 +104,8 @@ interface StrategyRow {
   conditions: TargetingItem[]
   defaultVariant: string
   rollout: RolloutBucket[]
-  variants: VariantRow[]
+	variants: VariantRow[]
+	rawCondition?: unknown
 }
 
 interface StrategyDTO {
@@ -159,9 +160,9 @@ function tagsFromText(value: string): string[] {
 	return [...new Set(tags)]
 }
 
-function formatCreatedAt(value: string): string {
+function formatCreatedAt(value: string, locale: string): string {
 	const date = new Date(value)
-	return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("pt-BR").format(date)
+	return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat(locale).format(date)
 }
 
 function clampPercentage(value: string | number): number {
@@ -220,6 +221,23 @@ export function conditionToLeaf(condition: unknown): ConditionRow {
 function isCombinatorGroup(condition: unknown): condition is Record<Combinator, unknown[]> {
   if (!condition || typeof condition !== "object") return false
   return COMBINATORS.some((combinator) => Array.isArray((condition as Record<string, unknown>)[combinator]))
+}
+
+function isEditableLeaf(condition: unknown): boolean {
+	if (!condition || typeof condition !== "object") return false
+	const notArg = (condition as Record<string, unknown>)["!"]
+	if (notArg !== undefined) return isEditableLeaf(Array.isArray(notArg) && notArg.length === 1 ? notArg[0] : notArg)
+	return OPERATORS.some((operator) => {
+		const args = (condition as Record<string, unknown>)[operator]
+		return Array.isArray(args) && args.length === 2 && typeof (args[0] as { var?: unknown })?.var === "string"
+	})
+}
+
+export function isEditableCondition(condition: unknown): boolean {
+	if (isEditableLeaf(condition)) return true
+	if (!isCombinatorGroup(condition)) return false
+	const combinator = COMBINATORS.find((candidate) => Array.isArray(condition[candidate]))!
+	return condition[combinator].every(isEditableLeaf)
 }
 
 function conditionToItem(condition: unknown): TargetingItem {
@@ -316,7 +334,10 @@ export function ruleToCondition(rule: RuleRow): unknown {
 }
 
 function parseStrategy(s: StrategyDTO): StrategyRow {
-  const { combinator, conditions } = conditionToRule(s.condition)
+	const editableCondition = isEditableCondition(s.condition)
+	const { combinator, conditions } = editableCondition
+		? conditionToRule(s.condition)
+		: { combinator: "and" as const, conditions: [{ attribute: "", operator: "==" as const, value: "", negate: false }] }
   const rollout = Array.isArray(s.rollout)
     ? (s.rollout as { variant: string; percentage: number }[]).map((b) => ({ variant: b.variant, percentage: String(b.percentage) }))
     : []
@@ -326,7 +347,8 @@ function parseStrategy(s: StrategyDTO): StrategyRow {
     conditions,
     defaultVariant: s.defaultVariant,
     rollout,
-    variants: s.variants.map((v) => ({ key: v.key, value: stringifyVariantValue(v.value) })),
+		variants: s.variants.map((v) => ({ key: v.key, value: stringifyVariantValue(v.value) })),
+		rawCondition: editableCondition ? undefined : s.condition,
   }
 }
 
@@ -336,7 +358,7 @@ function newStrategy(seedVariants: VariantRow[], type: StrategyType): StrategyRo
   const offVariant = booleanVariantKey(variants, false)
 
   return {
-    name: type === "gradual" ? "Gradual rollout" : "Standard",
+		name: "",
     combinator: "and",
     conditions: [{ attribute: "", operator: "==", value: "", negate: false }],
     defaultVariant: offVariant || variants[0]?.key || "",
@@ -356,7 +378,8 @@ function TargetingConditionFields({
   onChange: (patch: Partial<ConditionRow>) => void
   onAttributeChange: (attribute: string) => void
 }) {
-  const field = contextFields.find((candidate) => candidate.key === condition.attribute)
+	const { t } = useTranslation()
+	const field = contextFields.find((candidate) => candidate.key === condition.attribute)
 
   return (
     <>
@@ -365,9 +388,9 @@ function TargetingConditionFields({
         value={condition.attribute}
         onChange={onAttributeChange}
       />
-      <div className="flex items-center gap-1" title="Negate this condition">
+	  <div className="flex items-center gap-1" title={t("flags.negateCondition")}>
         <Switch checked={condition.negate} onCheckedChange={(negate) => onChange({ negate })} />
-        <Label className="text-xs text-muted-foreground">not</Label>
+		<Label className="text-xs text-muted-foreground">{t("flags.not")}</Label>
       </div>
       <Select value={condition.operator} onValueChange={(operator) => onChange({ operator: operator as Operator })}>
         <SelectTrigger className="w-28">
@@ -387,17 +410,17 @@ function TargetingConditionFields({
             options={field.values.map((value) => ({ value: value.value, label: value.value }))}
             selected={condition.value ? condition.value.split(",").filter(Boolean) : []}
             onChange={(values) => onChange({ value: values.join(",") })}
-            placeholder="Select values"
+			placeholder={t("flags.selectValues")}
           />
         ) : (
           <Select value={condition.value} onValueChange={(value) => onChange({ value })}>
-            <SelectTrigger><SelectValue placeholder="Select value" /></SelectTrigger>
+			<SelectTrigger><SelectValue placeholder={t("flags.selectValue")} /></SelectTrigger>
             <SelectContent>{field.values.map((value) => <SelectItem key={value.value} value={value.value}>{value.value}</SelectItem>)}</SelectContent>
           </Select>
         )
       ) : (
         <Input
-          placeholder={OPERATOR_PLACEHOLDERS[condition.operator] ?? "value"}
+			placeholder={t(OPERATOR_PLACEHOLDERS[condition.operator] ?? "flags.valuePlaceholder")}
           value={condition.value}
           onChange={(event) => onChange({ value: event.target.value })}
         />
@@ -407,7 +430,7 @@ function TargetingConditionFields({
 }
 
 export function FlagEditorPage() {
-  const { t } = useTranslation()
+	const { t, i18n } = useTranslation()
   const { projectId, key } = useParams<{ projectId: string; key: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -464,7 +487,7 @@ export function FlagEditorPage() {
           order: index,
           name: s.name,
           isDefault: false,
-          condition: ruleToCondition({ priority: 0, description: "", combinator: s.combinator, conditions: s.conditions, variantKey: "", rollout: [] }),
+		  condition: s.rawCondition ?? ruleToCondition({ priority: 0, description: "", combinator: s.combinator, conditions: s.conditions, variantKey: "", rollout: [] }),
           defaultVariant: s.defaultVariant,
           rollout: s.rollout.length ? s.rollout.map((b) => ({ variant: b.variant, percentage: Number(b.percentage) })) : undefined,
           variants: s.variants.map((v) => ({ key: v.key, value: parseVariantValue(flag.flagType, v.value) })),
@@ -779,7 +802,7 @@ export function FlagEditorPage() {
 				<dl className="grid gap-3 text-sm">
 					<div className="grid gap-1">
 						<dt className="text-muted-foreground">{t("flags.created")}</dt>
-						<dd>{formatCreatedAt(flag.createdAt)}</dd>
+					<dd>{formatCreatedAt(flag.createdAt, i18n.language)}</dd>
 					</div>
 					<div className="grid gap-1">
 						<dt className="text-muted-foreground">{t("flags.createdBy")}</dt>
@@ -834,15 +857,15 @@ export function FlagEditorPage() {
                     className="flex-1"
                   />
                   <Badge variant="secondary">{t(type === "gradual" ? "flags.gradual" : "flags.standard")}</Badge>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${s.name || `strategy ${i + 1}`} up`} onClick={() => moveStrategy(i, -1)} disabled={i === 0}>
+				  <Button type="button" variant="ghost" size="icon-sm" aria-label={t("flags.moveStrategyUp", { strategy: s.name || t("flags.strategyNumber", { index: i + 1 }) })} onClick={() => moveStrategy(i, -1)} disabled={i === 0}>
                     <ArrowUp />
                   </Button>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${s.name || `strategy ${i + 1}`} down`} onClick={() => moveStrategy(i, 1)} disabled={i === strategies.length - 1}>
+				  <Button type="button" variant="ghost" size="icon-sm" aria-label={t("flags.moveStrategyDown", { strategy: s.name || t("flags.strategyNumber", { index: i + 1 }) })} onClick={() => moveStrategy(i, 1)} disabled={i === strategies.length - 1}>
                     <ArrowDown />
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label={`Strategy actions for ${s.name || `strategy ${i + 1}`}`}>
+					  <Button type="button" variant="ghost" size="icon-sm" aria-label={t("flags.strategyActionsAria", { strategy: s.name || t("flags.strategyNumber", { index: i + 1 }) })}>
                         <EllipsisVertical />
                       </Button>
                     </DropdownMenuTrigger>
@@ -882,7 +905,7 @@ export function FlagEditorPage() {
                         disabled={!onVariant || !offVariant}
                       />
                       <Label htmlFor={`strategy-${i}-standard-value`} className="font-medium">
-                        {Boolean(onVariant) && s.defaultVariant === onVariant ? "On" : "Off"}
+					{Boolean(onVariant) && s.defaultVariant === onVariant ? t("flags.on") : t("flags.off")}
                       </Label>
                     </div>
                   ) : (
@@ -919,15 +942,15 @@ export function FlagEditorPage() {
                 {!isBooleanFlag && (
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs text-muted-foreground">Variants</Label>
+					  <Label className="text-xs text-muted-foreground">{t("flags.variants")}</Label>
                       <Button type="button" variant="ghost" size="sm" onClick={() => addVariant(i)}>
-                        Add variant
+						{t("flags.addVariant")}
                       </Button>
                     </div>
                   {s.variants.map((v, vi) => (
                     <div key={vi} className="flex items-center gap-2">
-                      <Input placeholder="key" value={v.key} onChange={(e) => updateVariant(i, vi, "key", e.target.value)} className="w-32" />
-                      <Input placeholder="value" value={v.value} onChange={(e) => updateVariant(i, vi, "value", e.target.value)} />
+					  <Input placeholder={t("flags.variantKeyPlaceholder")} value={v.key} onChange={(e) => updateVariant(i, vi, "key", e.target.value)} className="w-32" />
+					  <Input placeholder={t("flags.variantValuePlaceholder")} value={v.value} onChange={(e) => updateVariant(i, vi, "value", e.target.value)} />
                       <ActionButton
                         type="button"
                         variant="destructive"
@@ -936,15 +959,15 @@ export function FlagEditorPage() {
                         onClick={() => removeVariant(i, vi)}
                         disabled={s.variants.length <= 1}
                       >
-                        Remove
+						{t("pages.remove")}
                       </ActionButton>
                     </div>
                   ))}
                   <div className="flex flex-col gap-2 max-w-xs">
-                    <Label className="text-xs text-muted-foreground">Value served when this strategy matches without a rollout hit</Label>
+					<Label className="text-xs text-muted-foreground">{t("flags.defaultVariantDescription")}</Label>
                     <Select key={s.variants.length ? "ready" : "loading"} value={s.defaultVariant} onValueChange={(v) => updateStrategy(i, { defaultVariant: v })}>
                       <SelectTrigger>
-                        <SelectValue placeholder="variant..." />
+					  <SelectValue placeholder={t("flags.selectVariant")} />
                       </SelectTrigger>
                       <SelectContent>
                         {s.variants.filter((v) => v.key).map((v) => (
@@ -963,33 +986,36 @@ export function FlagEditorPage() {
                 <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <Label className="text-sm font-medium">Targeting</Label>
-                        <p className="text-xs text-muted-foreground">Every condition must reference the evaluation context.</p>
+						<Label className="text-sm font-medium">{t("flags.targeting")}</Label>
+						<p className="text-xs text-muted-foreground">{t("flags.targetingHint")}</p>
+						{s.rawCondition !== undefined && <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t("flags.unsupportedCondition")}</p>}
                       </div>
                       <div className="flex items-center gap-1">
-                        <ActionButton type="button" variant="outline" size="sm" icon={<ListPlus />} onClick={() => addConditionGroup(i)}>
-                          Add group
+						<ActionButton type="button" variant="outline" size="sm" icon={<ListPlus />} onClick={() => addConditionGroup(i)} disabled={s.rawCondition !== undefined}>
+						{t("flags.addGroup")}
                         </ActionButton>
                         <ActionButton
                           type="button"
                           variant="outline"
                           size="sm"
                           icon={<Plus />}
-                          className="border-blue-500/60 text-blue-600 hover:bg-blue-500/10 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                          onClick={() => addCondition(i)}
+						  className="border-blue-500/60 text-blue-600 hover:bg-blue-500/10 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+						  onClick={() => addCondition(i)}
+						  disabled={s.rawCondition !== undefined}
                         >
-                          Add condition
+						{t("flags.addCondition")}
                         </ActionButton>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2">
+					<fieldset disabled={s.rawCondition !== undefined} className="contents">
+					<div className="flex flex-col gap-2">
                       {s.conditions.map((item, itemIndex) => (
                         <div key={itemIndex} className="grid gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center">
                           {itemIndex === 0 ? (
-                            <span className="inline-flex h-8 w-20 items-center justify-center rounded-full border border-primary/40 bg-primary/10 px-3 text-xs font-bold tracking-wide text-primary uppercase">Where</span>
+							<span className="inline-flex h-8 w-20 items-center justify-center rounded-full border border-primary/40 bg-primary/10 px-3 text-xs font-bold tracking-wide text-primary uppercase">{t("flags.where")}</span>
                           ) : (
                             <Select value={item.connector ?? s.combinator} onValueChange={(value) => updateConditionConnector(i, itemIndex, value as Combinator)}>
-                              <SelectTrigger aria-label={`Logical operator before targeting item ${itemIndex + 1}`} className="w-20 rounded-full border-primary bg-primary px-3 font-semibold text-primary-foreground [&_svg]:text-primary-foreground">
+							  <SelectTrigger aria-label={t("flags.targetingOperatorAria", { index: itemIndex + 1 })} className="w-20 rounded-full border-primary bg-primary px-3 font-semibold text-primary-foreground [&_svg]:text-primary-foreground">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1003,17 +1029,17 @@ export function FlagEditorPage() {
                             <div className="rounded-lg border border-primary/30 bg-muted/30 p-3">
                               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs font-semibold text-foreground">Group</span>
+								  <span className="text-xs font-semibold text-foreground">{t("flags.group")}</span>
                                   <Select value={item.combinator} onValueChange={(value) => updateGroup(i, itemIndex, { combinator: value as Combinator })}>
-                                    <SelectTrigger aria-label="Group logical operator" className="w-24 border-primary/50 bg-background font-semibold text-foreground">
+									<SelectTrigger aria-label={t("flags.groupOperatorAria")} className="w-24 border-primary/50 bg-background font-semibold text-foreground">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="and">ALL (AND)</SelectItem>
-                                      <SelectItem value="or">ANY (OR)</SelectItem>
+									  <SelectItem value="and">{t("flags.allConditions")}</SelectItem>
+									  <SelectItem value="or">{t("flags.anyConditions")}</SelectItem>
                                     </SelectContent>
                                   </Select>
-                                  <span className="text-xs text-muted-foreground">conditions inside this group</span>
+								  <span className="text-xs text-muted-foreground">{t("flags.groupConditions")}</span>
                                 </div>
                                 <ActionButton
                                   type="button"
@@ -1023,14 +1049,14 @@ export function FlagEditorPage() {
                                   className="border-blue-500/60 text-blue-600 hover:bg-blue-500/10 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                                   onClick={() => addGroupCondition(i, itemIndex)}
                                 >
-                                  Add condition
+									{t("flags.addCondition")}
                                 </ActionButton>
                               </div>
                               <div className="flex flex-col gap-2 border-l-2 border-primary/30 pl-3">
                                 {item.conditions.map((condition, conditionIndex) => (
                                   <div key={conditionIndex} className="grid gap-2 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center">
                                     {conditionIndex === 0 ? (
-                                      <span className="inline-flex h-8 w-20 items-center justify-center rounded-full border border-primary/40 bg-primary/10 px-3 text-xs font-bold tracking-wide text-primary uppercase">Where</span>
+									<span className="inline-flex h-8 w-20 items-center justify-center rounded-full border border-primary/40 bg-primary/10 px-3 text-xs font-bold tracking-wide text-primary uppercase">{t("flags.where")}</span>
                                     ) : (
                                       <span className="inline-flex h-8 w-20 items-center justify-center rounded-full bg-secondary px-3 text-xs font-semibold text-secondary-foreground">
                                         {item.combinator.toUpperCase()}
@@ -1048,12 +1074,12 @@ export function FlagEditorPage() {
                                         variant="ghost"
                                         size="icon-sm"
                                         icon={<X />}
-                                        aria-label="Remove condition"
+									aria-label={t("flags.removeCondition")}
                                         className="absolute top-2 right-2 border border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                         onClick={() => removeGroupCondition(i, itemIndex, conditionIndex)}
                                         disabled={item.conditions.length <= 1}
                                       >
-                                        <span className="sr-only">Remove condition</span>
+									<span className="sr-only">{t("flags.removeCondition")}</span>
                                       </ActionButton>
                                     </div>
                                   </div>
@@ -1073,35 +1099,36 @@ export function FlagEditorPage() {
                                 variant="ghost"
                                 size="icon-sm"
                                 icon={<X />}
-                                aria-label="Remove condition"
+								aria-label={t("flags.removeCondition")}
                                 className="absolute top-3 right-3 border border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 onClick={() => removeCondition(i, itemIndex)}
                                 disabled={s.conditions.length <= 1}
                               >
-                                <span className="sr-only">Remove condition</span>
+								<span className="sr-only">{t("flags.removeCondition")}</span>
                               </ActionButton>
                             </div>
                           )}
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground">Groups support one inner level only, so you can build logic such as <code>plan = pro AND (country = BR OR country = US)</code>.</p>
-                    <Separator />
+					<p className="text-xs text-muted-foreground">{t("flags.groupLimitHint", { example: "plan = pro AND (country = BR OR country = US)" })}</p>
+					<Separator />
+					</fieldset>
                 </div>
 
                 {!isBooleanFlag && type === "gradual" && (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs text-muted-foreground">Rollout % (optional — splits matched traffic across this strategy's variants)</Label>
+					<Label className="text-xs text-muted-foreground">{t("flags.rolloutVariants")}</Label>
                     <Button type="button" variant="ghost" size="sm" onClick={() => addRolloutBucket(i)}>
-                      Add bucket
+						{t("flags.addBucket")}
                     </Button>
                   </div>
                   {s.rollout.map((b, bi) => (
                     <div key={bi} className="flex items-center gap-2">
                       <Select value={b.variant} onValueChange={(v) => updateRolloutBucket(i, bi, "variant", v)}>
                         <SelectTrigger className="w-32">
-                          <SelectValue placeholder="variant" />
+					  <SelectValue placeholder={t("flags.variant")} />
                         </SelectTrigger>
                         <SelectContent>
                           {s.variants.filter((v) => v.key).map((v) => (
@@ -1113,7 +1140,7 @@ export function FlagEditorPage() {
                       </Select>
                       <div className="flex min-w-0 flex-1 items-center gap-2">
                         <Slider
-                          aria-label={`Rollout percentage for ${b.variant || `bucket ${bi + 1}`}`}
+						aria-label={t("flags.rolloutPercentageAria", { variant: b.variant || t("flags.bucketNumber", { index: bi + 1 }) })}
                           value={clampPercentage(b.percentage)}
                           onValueChange={(value) => updateRolloutBucket(i, bi, "percentage", String(value))}
                           min={0}
@@ -1127,7 +1154,7 @@ export function FlagEditorPage() {
                             max={100}
                             step={1}
                             inputMode="numeric"
-                            aria-label={`Rollout percentage for ${b.variant || `bucket ${bi + 1}`}`}
+							aria-label={t("flags.rolloutPercentageAria", { variant: b.variant || t("flags.bucketNumber", { index: bi + 1 }) })}
                             value={b.percentage}
                             onChange={(e) => {
                               const value = e.target.value
@@ -1139,7 +1166,7 @@ export function FlagEditorPage() {
                         </div>
                       </div>
                       <ActionButton type="button" variant="destructive" size="sm" icon={<Trash2 />} onClick={() => removeRolloutBucket(i, bi)}>
-                        Remove
+						{t("pages.remove")}
                       </ActionButton>
                     </div>
                   ))}
@@ -1155,14 +1182,14 @@ export function FlagEditorPage() {
           <TabsContent value="prerequisites">
         <Card>
           <CardHeader>
-            <CardTitle>How prerequisites work</CardTitle>
+			<CardTitle>{t("flags.prerequisitesTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              This flag evaluates its targeting strategies only when the selected prerequisite flag resolves to the required variant. Otherwise, it returns its default value.
+			{t("flags.prerequisitesIntro")}
             </p>
             <div className="flex flex-col gap-2 max-w-xs">
-              <Label>Prerequisite flag (optional)</Label>
+			<Label>{t("flags.prerequisiteFlag")}</Label>
               <Select
                 value={prerequisiteFlagKey || NONE_PREREQUISITE}
                 onValueChange={(v) => {
@@ -1171,10 +1198,10 @@ export function FlagEditorPage() {
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="none" />
+			<SelectValue placeholder={t("flags.none")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE_PREREQUISITE}>None</SelectItem>
+			<SelectItem value={NONE_PREREQUISITE}>{t("flags.none")}</SelectItem>
                   {prerequisiteCandidates.map((f) => (
                     <SelectItem key={f.key} value={f.key}>
                       {f.key}
@@ -1185,10 +1212,10 @@ export function FlagEditorPage() {
             </div>
             {prerequisiteFlagKey && (
               <div className="flex flex-col gap-2 max-w-xs">
-                <Label>Required prerequisite variant</Label>
+			<Label>{t("flags.requiredPrerequisiteVariant")}</Label>
                 <Select value={prerequisiteVariant} onValueChange={setPrerequisiteVariant}>
                   <SelectTrigger>
-                    <SelectValue placeholder="variant..." />
+			<SelectValue placeholder={t("flags.selectVariant")} />
                   </SelectTrigger>
                   <SelectContent>
                     {Array.from(
@@ -1214,7 +1241,7 @@ export function FlagEditorPage() {
 
         <div>
           <Button type="submit" disabled={save.isPending}>
-            Save changes
+			{t("flags.saveChanges")}
           </Button>
         </div>
       </form>

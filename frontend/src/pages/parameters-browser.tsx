@@ -9,6 +9,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { api, ApiError } from "@/lib/api"
 import { useEnvironment } from "@/lib/environment"
+import { useTranslation } from "react-i18next"
 
 interface Parameter {
   key: string
@@ -22,6 +23,7 @@ export function parameterPath(parameterKey: string) {
 }
 
 export function ParametersBrowserPage() {
+	const { t } = useTranslation()
   const { projectId } = useParams<{ projectId: string }>()
   const { envKey, envPath } = useEnvironment()
   const queryClient = useQueryClient()
@@ -106,8 +108,8 @@ export function ParametersBrowserPage() {
     <div className="p-8">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Parameters</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Browse and edit the key/value store for this environment.</p>
+	          <h1 className="text-2xl font-semibold">{t("pages.parametersTitle")}</h1>
+	          <p className="mt-1 text-sm text-muted-foreground">{t("pages.parametersIntro")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Input placeholder="Filter by prefix..." value={prefix} onChange={(e) => setPrefix(e.target.value)} className="w-64" />
