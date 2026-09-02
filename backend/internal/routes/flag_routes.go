@@ -19,8 +19,8 @@ import (
 type flagService interface {
 	List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error)
 	Get(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error)
-	Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []flag.StrategyInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error)
-	Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in flag.UpdateInput) (*model.FeatureFlag, error)
+	Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []flag.StrategyInput, prerequisiteFlagKey, prerequisiteVariant string, actors ...uuid.UUID) (*model.FeatureFlag, error)
+	Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in flag.UpdateInput, actors ...uuid.UUID) (*model.FeatureFlag, error)
 	Archive(ctx context.Context, projectID uuid.UUID, key string) error
 	Unarchive(ctx context.Context, projectID uuid.UUID, key string) error
 	Delete(ctx context.Context, projectID uuid.UUID, key string) error
@@ -57,14 +57,15 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		}
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
 		environmentID := c.MustGet(middleware.ContextEnvironmentIDKey).(uuid.UUID)
+		userID := c.MustGet(middleware.ContextUserIDKey).(uuid.UUID)
 		enabled := true
 		if req.Enabled != nil {
 			enabled = *req.Enabled
 		}
 		f, err := flags.Create(c.Request.Context(), projectID, environmentID, req.Key, req.Name, req.Description, req.FlagType, enabled,
-			toStrategyInputs(req.Strategies), req.PrerequisiteFlagKey, req.PrerequisiteVariant)
+			toStrategyInputs(req.Strategies), req.PrerequisiteFlagKey, req.PrerequisiteVariant, userID)
 		if err != nil {
-			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrStrategyDefaultCount) {
+			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrDuplicatePriority) {
 				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 				return
 			}
@@ -93,25 +94,20 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 		}
 		projectID := c.MustGet(middleware.ContextProjectIDKey).(uuid.UUID)
 		environmentID := c.MustGet(middleware.ContextEnvironmentIDKey).(uuid.UUID)
-		in := flag.UpdateInput{Enabled: req.Enabled}
-		if req.Name != "" {
-			in.Name = &req.Name
-		}
-		if req.Description != "" {
-			in.Description = &req.Description
-		}
+		userID := c.MustGet(middleware.ContextUserIDKey).(uuid.UUID)
+		in := flag.UpdateInput{Enabled: req.Enabled, Name: req.Name, Description: req.Description, Tags: req.Tags}
 		if req.Strategies != nil {
 			in.Strategies = toStrategyInputs(req.Strategies)
 		}
 		in.PrerequisiteFlagKey = req.PrerequisiteFlagKey
 		in.PrerequisiteVariant = req.PrerequisiteVariant
-		f, err := flags.Update(c.Request.Context(), projectID, environmentID, c.Param("key"), in)
+		f, err := flags.Update(c.Request.Context(), projectID, environmentID, c.Param("key"), in, userID)
 		if err != nil {
 			if errors.Is(err, flag.ErrNotFound) {
 				c.JSON(http.StatusNotFound, dto.ErrorResponse{Error: "flag not found"})
 				return
 			}
-			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrStrategyDefaultCount) {
+			if errors.Is(err, flag.ErrVariantTypeMismatch) || errors.Is(err, flag.ErrUnknownFlagType) || errors.Is(err, flag.ErrDuplicatePriority) {
 				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
 				return
 			}
@@ -158,6 +154,21 @@ func registerFlagRoutes(rg *gin.RouterGroup, auth middleware.TokenParser, roleRe
 }
 
 func toFlagDTO(f *model.FeatureFlag) dto.FlagDTO {
+	tags := []string(f.Tags)
+	if tags == nil {
+		tags = []string{}
+	}
+	collaborators := make([]dto.FlagUserDTO, 0, len(f.Collaborators))
+	for _, collaborator := range f.Collaborators {
+		collaborators = append(collaborators, dto.FlagUserDTO{
+			ID:   collaborator.UserID.String(),
+			Name: collaborator.User.Name,
+		})
+	}
+	var createdBy *dto.FlagUserDTO
+	if f.CreatedBy != nil {
+		createdBy = &dto.FlagUserDTO{ID: f.CreatedBy.ID.String(), Name: f.CreatedBy.Name}
+	}
 	strategies := make([]dto.StrategyDTO, 0, len(f.Strategies))
 	for _, st := range f.Strategies {
 		variants := make([]dto.StrategyVariantDTO, 0, len(st.Variants))
@@ -184,12 +195,16 @@ func toFlagDTO(f *model.FeatureFlag) dto.FlagDTO {
 		Key:                 f.Key,
 		Name:                f.Name,
 		Description:         f.Description,
+		Tags:                tags,
 		FlagType:            f.FlagType,
 		Enabled:             enabled,
 		Archived:            f.ArchivedAt != nil,
 		Strategies:          strategies,
 		PrerequisiteFlagKey: f.PrerequisiteFlagKey,
 		PrerequisiteVariant: f.PrerequisiteVariant,
+		CreatedAt:           f.CreatedAt,
+		CreatedBy:           createdBy,
+		Collaborators:       collaborators,
 	}
 }
 

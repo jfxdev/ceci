@@ -40,6 +40,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 		&model.ContextFieldValue{},
 		&model.ProjectAPIKey{},
 		&model.FeatureFlag{},
+		&model.FlagCollaborator{},
 		&model.FlagEnvironmentConfig{},
 		&model.FlagStrategy{},
 		&model.FlagStrategyVariant{},

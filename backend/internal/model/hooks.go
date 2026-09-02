@@ -64,6 +64,11 @@ func (f *FeatureFlag) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+func (c *FlagCollaborator) BeforeCreate(tx *gorm.DB) error {
+	generateID(&c.ID)
+	return nil
+}
+
 func (s *FlagStrategy) BeforeCreate(tx *gorm.DB) error {
 	generateID(&s.ID)
 	return nil

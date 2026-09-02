@@ -32,6 +32,7 @@ var (
 	ErrBootstrapAdminSSO  = errors.New("bootstrap administrator cannot use sso")
 	ErrFederatedEmailUsed = errors.New("email is already used by a local account")
 	ErrJITDisabled        = errors.New("just-in-time provisioning is disabled")
+	ErrInvalidLocale      = errors.New("invalid locale")
 )
 
 type Service struct {
@@ -235,6 +236,16 @@ func (s *Service) Logout(ctx context.Context, rawRefresh string) error {
 }
 
 func (s *Service) Me(ctx context.Context, userID uuid.UUID) (*model.User, error) {
+	return s.users.FindByID(ctx, userID)
+}
+
+func (s *Service) UpdateLocale(ctx context.Context, userID uuid.UUID, locale string) (*model.User, error) {
+	if locale != "en" && locale != "pt-BR" {
+		return nil, ErrInvalidLocale
+	}
+	if err := s.users.SetLocale(ctx, userID, locale); err != nil {
+		return nil, err
+	}
 	return s.users.FindByID(ctx, userID)
 }
 

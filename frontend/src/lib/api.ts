@@ -2,9 +2,11 @@ const API_BASE = "/api/v1"
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  code: string | undefined
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }
 
@@ -20,6 +22,7 @@ export function getAccessToken() {
 
 async function request<T>(path: string, options: RequestInit = {}, retry = true): Promise<T> {
   const headers = new Headers(options.headers)
+  headers.set("Accept-Language", document.documentElement.lang || navigator.language || "en")
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`)
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
 
@@ -32,7 +35,7 @@ async function request<T>(path: string, options: RequestInit = {}, retry = true)
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
-    throw new ApiError(res.status, body.error ?? res.statusText)
+    throw new ApiError(res.status, body.error ?? res.statusText, body.code)
   }
 
   if (res.status === 204) return undefined as T

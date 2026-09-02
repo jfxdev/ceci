@@ -80,6 +80,15 @@ func (f *fakeUserRepository) SetAdmin(ctx context.Context, id uuid.UUID, isAdmin
 	return nil
 }
 
+func (f *fakeUserRepository) SetLocale(ctx context.Context, id uuid.UUID, locale string) error {
+	u, ok := f.usersByID[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	u.Locale = locale
+	return nil
+}
+
 func (f *fakeUserRepository) CreateRefreshToken(ctx context.Context, rt *model.RefreshToken) error {
 	if rt.ID == uuid.Nil {
 		rt.ID = uuid.New()

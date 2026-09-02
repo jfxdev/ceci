@@ -5,12 +5,13 @@ import { KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { api } from "@/lib/api"
 import { useEnvironment } from "@/lib/environment"
+import { useTranslation } from "react-i18next"
 
 interface APIKey {
   id: string
@@ -27,6 +28,7 @@ export function ProjectSettingsPage() {
   const [label, setLabel] = useState("")
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [pendingRevoke, setPendingRevoke] = useState<APIKey | null>(null)
+  const { t } = useTranslation()
 
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ["api-keys", projectId, envKey],
@@ -57,9 +59,9 @@ export function ProjectSettingsPage() {
   }
 
   const columns: DataTableColumn<APIKey>[] = [
-    { key: "label", header: "Label", render: (key) => key.label },
-    { key: "prefix", header: "Key", render: (key) => <code className="text-sm">{key.prefix}…</code> },
-    { key: "status", header: "Status", render: (key) => (key.revoked ? "Revoked" : "Active") },
+	    { key: "label", header: t("pages.apiKeyLabel"), render: (key) => key.label },
+    { key: "prefix", header: t("overview.key"), render: (key) => <code className="text-sm">{key.prefix}…</code> },
+    { key: "status", header: t("pages.status"), render: (key) => (key.revoked ? t("pages.revoke") : t("pages.active")) },
     {
       key: "actions",
       header: "",
@@ -74,7 +76,7 @@ export function ProjectSettingsPage() {
               setPendingRevoke(key)
             }}
           >
-            Revoke
+            {t("pages.revoke")}
           </Button>
         ),
     },
@@ -83,15 +85,13 @@ export function ProjectSettingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div>
-        <p className="text-sm font-medium text-primary">Project settings</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">API access</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">Create and revoke OFREP keys for the selected environment.</p>
+        <p className="text-sm font-medium text-primary">{t("pages.projectSettings")}</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t("pages.apiAccess")}</h1>
       </div>
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> OFREP API keys</CardTitle>
-            <CardDescription className="mt-2">Keys are scoped to the environment selected in the header.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><KeyRound className="size-5" /> {t("pages.apiKeys")}</CardTitle>
           </div>
           <Dialog
             open={open}
@@ -100,37 +100,37 @@ export function ProjectSettingsPage() {
               if (!value) setCreatedKey(null)
             }}
           >
-            <DialogTrigger asChild><Button size="sm">New key</Button></DialogTrigger>
+            <DialogTrigger asChild><Button size="sm">{t("pages.newKey")}</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Create API key</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("pages.createAPIKey")}</DialogTitle></DialogHeader>
               {createdKey ? (
                 <div className="flex flex-col gap-3">
-                  <p className="text-sm text-muted-foreground">Copy this key now — it won't be shown again.</p>
+                  <p className="text-sm text-muted-foreground">{t("pages.copyKey")}</p>
                   <code className="break-all rounded bg-muted p-2 text-sm">{createdKey}</code>
-                  <DialogFooter><Button onClick={() => setOpen(false)}>Done</Button></DialogFooter>
+                  <DialogFooter><Button onClick={() => setOpen(false)}>{t("pages.done")}</Button></DialogFooter>
                 </div>
               ) : (
                 <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
                   <div className="flex flex-col gap-2">
-                    <Label htmlFor="key-label">Label</Label>
+	                    <Label htmlFor="key-label">{t("pages.apiKeyLabel")}</Label>
                     <Input id="key-label" placeholder="CI" value={label} onChange={(event) => setLabel(event.target.value)} required />
                   </div>
-                  <DialogFooter><Button type="submit" disabled={createKey.isPending || !label.trim()}>{createKey.isPending ? "Creating…" : "Create key"}</Button></DialogFooter>
+                  <DialogFooter><Button type="submit" disabled={createKey.isPending || !label.trim()}>{createKey.isPending ? t("projects.creating") : t("pages.createAPIKey")}</Button></DialogFooter>
                 </form>
               )}
             </DialogContent>
           </Dialog>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} rows={keys} rowKey={(key) => key.id} emptyMessage={isLoading ? "Loading…" : "No API keys yet"} />
+          <DataTable columns={columns} rows={keys} rowKey={(key) => key.id} emptyMessage={isLoading ? t("common.loading") : t("pages.noAPIKeys")} />
         </CardContent>
       </Card>
       <ConfirmDialog
         open={!!pendingRevoke}
         onOpenChange={(value) => !value && setPendingRevoke(null)}
-        title={`Revoke "${pendingRevoke?.label}"?`}
-        description="OFREP clients using this key will stop being able to evaluate flags."
-        confirmLabel="Revoke"
+        title={`${t("pages.revoke")} "${pendingRevoke?.label}"?`}
+        description={t("pages.revokeDescription")}
+        confirmLabel={t("pages.revoke")}
         loading={revokeKey.isPending}
         onConfirm={() => pendingRevoke && revokeKey.mutate(pendingRevoke)}
       />

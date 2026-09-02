@@ -7,17 +7,24 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"leaflag/backend/internal/model"
 )
 
+var ErrDuplicateStrategyPriority = errors.New("strategy priorities must be unique")
+
 type FlagRepository interface {
+	// InTransaction runs related flag mutations in a single database
+	// transaction. The callback receives a repository bound to that transaction.
+	InTransaction(ctx context.Context, fn func(FlagRepository) error) error
 	List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error)
 	FindByKey(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error)
 	Create(ctx context.Context, flag *model.FeatureFlag) error
 	// UpdateCore updates the environment-independent fields of a flag: name,
-	// description, and prerequisite.
+	// description, tags, and prerequisite.
 	UpdateCore(ctx context.Context, flag *model.FeatureFlag) error
+	AddCollaborator(ctx context.Context, flagID, userID uuid.UUID) error
 	SetArchived(ctx context.Context, projectID uuid.UUID, key string, archived bool) error
 	Delete(ctx context.Context, projectID uuid.UUID, key string) error
 	// ReplaceStrategies atomically replaces a flag's targeting strategies
@@ -39,12 +46,20 @@ func NewFlagRepository(db *gorm.DB) FlagRepository {
 	return &postgresFlagRepository{db: db}
 }
 
+func (r *postgresFlagRepository) InTransaction(ctx context.Context, fn func(FlagRepository) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(&postgresFlagRepository{db: tx})
+	})
+}
+
 func (r *postgresFlagRepository) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error) {
 	var flags []model.FeatureFlag
 	err := r.db.WithContext(ctx).
+		Preload("CreatedBy").
+		Preload("Collaborators.User").
 		Preload("Configs", func(tx *gorm.DB) *gorm.DB { return tx.Where("environment_id = ?", environmentID) }).
 		Preload("Strategies", func(tx *gorm.DB) *gorm.DB {
-			return tx.Where("environment_id = ?", environmentID).Order("is_default, priority")
+			return tx.Where("environment_id = ?", environmentID).Order("priority")
 		}).
 		Preload("Strategies.Variants").
 		Where("project_id = ?", projectID).
@@ -56,9 +71,11 @@ func (r *postgresFlagRepository) List(ctx context.Context, projectID, environmen
 func (r *postgresFlagRepository) FindByKey(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error) {
 	var f model.FeatureFlag
 	err := r.db.WithContext(ctx).
+		Preload("CreatedBy").
+		Preload("Collaborators.User").
 		Preload("Configs", func(tx *gorm.DB) *gorm.DB { return tx.Where("environment_id = ?", environmentID) }).
 		Preload("Strategies", func(tx *gorm.DB) *gorm.DB {
-			return tx.Where("environment_id = ?", environmentID).Order("is_default, priority")
+			return tx.Where("environment_id = ?", environmentID).Order("priority")
 		}).
 		Preload("Strategies.Variants").
 		Where("project_id = ? AND key = ?", projectID, key).
@@ -82,9 +99,20 @@ func (r *postgresFlagRepository) UpdateCore(ctx context.Context, flag *model.Fea
 		Updates(map[string]any{
 			"name":                  flag.Name,
 			"description":           flag.Description,
+			"tags":                  flag.Tags,
 			"prerequisite_flag_key": flag.PrerequisiteFlagKey,
 			"prerequisite_variant":  flag.PrerequisiteVariant,
 		}).Error
+}
+
+func (r *postgresFlagRepository) AddCollaborator(ctx context.Context, flagID, userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return nil
+	}
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "flag_id"}, {Name: "user_id"}},
+		DoNothing: true,
+	}).Create(&model.FlagCollaborator{FlagID: flagID, UserID: userID}).Error
 }
 
 func (r *postgresFlagRepository) SetArchived(ctx context.Context, projectID uuid.UUID, key string, archived bool) error {
@@ -120,6 +148,9 @@ func (r *postgresFlagRepository) Delete(ctx context.Context, projectID uuid.UUID
 		if err := tx.Where("flag_id = ?", f.ID).Delete(&model.FlagEnvironmentConfig{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("flag_id = ?", f.ID).Delete(&model.FlagCollaborator{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&f).Error
 	})
 }
@@ -141,6 +172,13 @@ func deleteStrategiesAndVariants(tx *gorm.DB, scopeQuery string, scopeArgs ...an
 }
 
 func (r *postgresFlagRepository) ReplaceStrategies(ctx context.Context, flagID, environmentID uuid.UUID, strategies []model.FlagStrategy) error {
+	priorities := make(map[int]struct{}, len(strategies))
+	for _, strategy := range strategies {
+		if _, exists := priorities[strategy.Priority]; exists {
+			return ErrDuplicateStrategyPriority
+		}
+		priorities[strategy.Priority] = struct{}{}
+	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := deleteStrategiesAndVariants(tx, "flag_id = ? AND environment_id = ?", flagID, environmentID); err != nil {
 			return err

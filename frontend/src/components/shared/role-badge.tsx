@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 
 export type ProjectRole = "owner" | "admin" | "editor" | "viewer"
 
@@ -16,5 +17,6 @@ export interface RoleBadgeProps {
 }
 
 export function RoleBadge({ role, className }: RoleBadgeProps) {
-  return <Badge className={cn(ROLE_STYLES[role], className)}>{role}</Badge>
+  const { t } = useTranslation()
+  return <Badge className={cn(ROLE_STYLES[role], className)}>{t(`pages.role${role[0].toUpperCase()}${role.slice(1)}`)}</Badge>
 }

@@ -20,6 +20,7 @@ type UserRepository interface {
 	FindIdentity(ctx context.Context, provider, subject string) (*model.AuthIdentity, error)
 	CreateIdentity(ctx context.Context, identity *model.AuthIdentity) error
 	SetAdmin(ctx context.Context, id uuid.UUID, isAdmin bool) error
+	SetLocale(ctx context.Context, id uuid.UUID, locale string) error
 	CreateRefreshToken(ctx context.Context, rt *model.RefreshToken) error
 	FindRefreshToken(ctx context.Context, tokenHash string) (*model.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, id uuid.UUID) error
@@ -27,6 +28,10 @@ type UserRepository interface {
 
 func (r *postgresUserRepository) SetAdmin(ctx context.Context, id uuid.UUID, isAdmin bool) error {
 	return r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Update("is_admin", isAdmin).Error
+}
+
+func (r *postgresUserRepository) SetLocale(ctx context.Context, id uuid.UUID, locale string) error {
+	return r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Update("locale", locale).Error
 }
 
 type postgresUserRepository struct {

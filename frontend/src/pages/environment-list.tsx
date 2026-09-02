@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { ConfirmDialog } from "@/components/shared/confirm-dialog"
-import { api, ApiError } from "@/lib/api"
+import { api } from "@/lib/api"
+import { alertMessageFromError } from "@/lib/alerts"
 import { useEnvironment, type Environment } from "@/lib/environment"
+import { useTranslation } from "react-i18next"
 
 export function EnvironmentListPage() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -22,6 +24,7 @@ export function EnvironmentListPage() {
   const [editing, setEditing] = useState<Record<string, string>>({})
   const [pendingDelete, setPendingDelete] = useState<Environment | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useTranslation()
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ["environments", projectId] })
@@ -36,7 +39,7 @@ export function EnvironmentListPage() {
       setName("")
       setError(null)
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to create environment"),
+	    onError: (err) => setError(alertMessageFromError(err, t("pages.createEnvironmentFailed"))),
   })
 
   const renameEnvironment = useMutation({
@@ -68,7 +71,7 @@ export function EnvironmentListPage() {
   const columns: DataTableColumn<Environment>[] = [
     {
       key: "environment",
-      header: "Environment",
+      header: t("pages.environment"),
       render: (environment) => (
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -83,8 +86,8 @@ export function EnvironmentListPage() {
     },
     {
       key: "status",
-      header: "Status",
-      render: (environment) => (environment.isDefault ? "Project default" : "Active"),
+      header: t("pages.status"),
+      render: (environment) => (environment.isDefault ? t("pages.projectDefault") : t("pages.active")),
     },
     {
       key: "actions",
@@ -94,24 +97,24 @@ export function EnvironmentListPage() {
         <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
           {editing[environment.key] === undefined ? (
             <Button variant="ghost" size="sm" onClick={() => setEditing((current) => ({ ...current, [environment.key]: environment.name }))}>
-              Rename
+              {t("pages.rename")}
             </Button>
           ) : (
             <>
               <Input
-                aria-label={`Rename ${environment.name}`}
+                aria-label={`${t("pages.rename")} ${environment.name}`}
                 value={editing[environment.key]}
                 onChange={(event) => setEditing((current) => ({ ...current, [environment.key]: event.target.value }))}
                 className="h-8 w-32"
               />
               <Button size="sm" onClick={() => renameEnvironment.mutate({ envKey: environment.key, newName: editing[environment.key] })}>
-                Save
+                {t("common.save")}
               </Button>
             </>
           )}
           {!environment.isDefault && editing[environment.key] === undefined && (
             <Button variant="ghost" size="sm" onClick={() => setPendingDelete(environment)}>
-              Delete
+              {t("common.delete")}
             </Button>
           )}
         </div>
@@ -123,37 +126,37 @@ export function EnvironmentListPage() {
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-medium text-primary">Project configuration</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Environments</h1>
+          <p className="text-sm font-medium text-primary">{t("pages.projectConfiguration")}</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t("pages.environments")}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Separate configuration safely across the contexts where your project runs.
+	            {t("pages.environmentsIntro")}
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus />
-              New environment
+              {t("pages.newEnvironment")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create environment</DialogTitle>
-              <p className="text-sm text-muted-foreground">Environment keys cannot be changed after creation.</p>
+              <DialogTitle>{t("pages.createEnvironment")}</DialogTitle>
+              <p className="text-sm text-muted-foreground">{t("pages.environmentKeyLocked")}</p>
             </DialogHeader>
             <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="environment-key">Key</Label>
+                <Label htmlFor="environment-key">{t("overview.key")}</Label>
                 <Input id="environment-key" placeholder="staging" value={key} onChange={(event) => setKey(event.target.value)} required />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="environment-name">Name</Label>
+                <Label htmlFor="environment-name">{t("overview.name")}</Label>
                 <Input id="environment-name" placeholder="Staging" value={name} onChange={(event) => setName(event.target.value)} required />
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <DialogFooter>
                 <Button type="submit" disabled={createEnvironment.isPending || !key.trim() || !name.trim()}>
-                  {createEnvironment.isPending ? "Creating…" : "Create environment"}
+                  {createEnvironment.isPending ? t("projects.creating") : t("pages.createEnvironment")}
                 </Button>
               </DialogFooter>
             </form>
@@ -163,20 +166,20 @@ export function EnvironmentListPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Available environments</CardTitle>
-          <CardDescription>The project default cannot be deleted because it provides the shared baseline.</CardDescription>
+          <CardTitle>{t("pages.availableEnvironments")}</CardTitle>
+          <CardDescription>{t("pages.environmentBaseline")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <DataTable columns={columns} rows={environments} rowKey={(environment) => environment.key} emptyMessage={isLoading ? "Loading…" : "No environments"} />
+          <DataTable columns={columns} rows={environments} rowKey={(environment) => environment.key} emptyMessage={isLoading ? t("common.loading") : t("pages.noEnvironments")} />
         </CardContent>
       </Card>
 
       <ConfirmDialog
         open={!!pendingDelete}
         onOpenChange={(value) => !value && setPendingDelete(null)}
-        title={`Delete "${pendingDelete?.name}"?`}
-        description="Flags, parameters, and API keys scoped to this environment will be removed. This cannot be undone."
-        confirmLabel="Delete"
+        title={`${t("common.delete")} "${pendingDelete?.name}"?`}
+        description={t("pages.deleteEnvironmentDescription")}
+        confirmLabel={t("common.delete")}
         loading={deleteEnvironment.isPending}
         onConfirm={() => pendingDelete && deleteEnvironment.mutate(pendingDelete)}
       />

@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { ThemeProvider } from "next-themes"
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -6,6 +7,7 @@ import { AppLayout } from "@/components/shared/app-layout"
 import { ProtectedRoute } from "@/components/shared/protected-route"
 import { AuthProvider } from "@/lib/auth"
 import { MaintenanceProvider } from "@/lib/maintenance"
+import { ColorThemeProvider } from "@/lib/color-theme"
 import { LoginPage } from "@/pages/login"
 import { RegisterPage } from "@/pages/register"
 import { ProjectListPage } from "@/pages/project-list"
@@ -27,10 +29,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AuthProvider>
-          <MaintenanceProvider>
-            <BrowserRouter>
-              <Routes>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
+          <ColorThemeProvider>
+            <AuthProvider>
+              <MaintenanceProvider>
+                <BrowserRouter>
+                  <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route element={<ProtectedRoute />}>
@@ -50,11 +54,13 @@ function App() {
                 </Route>
               </Route>
               <Route path="/" element={<Navigate to="/projects" replace />} />
-              </Routes>
-            </BrowserRouter>
-          </MaintenanceProvider>
-          <Toaster />
-        </AuthProvider>
+                  </Routes>
+                </BrowserRouter>
+              </MaintenanceProvider>
+              <Toaster position="top-right" closeButton richColors />
+            </AuthProvider>
+          </ColorThemeProvider>
+        </ThemeProvider>
       </TooltipProvider>
     </QueryClientProvider>
   )

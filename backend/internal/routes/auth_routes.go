@@ -23,6 +23,7 @@ type authService interface {
 	Refresh(ctx context.Context, rawRefresh string) (accessToken, newRefreshToken string, err error)
 	Logout(ctx context.Context, rawRefresh string) error
 	Me(ctx context.Context, userID uuid.UUID) (*model.User, error)
+	UpdateLocale(ctx context.Context, userID uuid.UUID, locale string) (*model.User, error)
 	ParseAccessToken(tokenStr string) (uuid.UUID, error)
 }
 
@@ -36,7 +37,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, authSvc authService) {
 	rg.POST("/auth/login", loginRateLimit, func(c *gin.Context) {
 		var req dto.LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error(), Code: "validation.invalid_login_request"})
 			return
 		}
 		accessToken, refreshToken, user, err := authSvc.Login(c.Request.Context(), req.Email, req.Password)
@@ -56,7 +57,7 @@ func registerAuthRoutes(rg *gin.RouterGroup, authSvc authService) {
 	rg.POST("/auth/register", registerRateLimit, func(c *gin.Context) {
 		var req dto.RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: err.Error(), Code: "validation.invalid_registration_request"})
 			return
 		}
 		if _, err := authSvc.Register(c.Request.Context(), req.Email, req.Password, req.Name); err != nil {
@@ -112,10 +113,33 @@ func registerAuthRoutes(rg *gin.RouterGroup, authSvc authService) {
 		}
 		c.JSON(http.StatusOK, toUserDTO(user))
 	})
+
+	rg.PUT("/me/preferences", middleware.RequireAuth(authSvc), func(c *gin.Context) {
+		var req dto.UpdateUserPreferencesRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "invalid preferences", Code: "validation.invalid_preferences"})
+			return
+		}
+		userID := c.MustGet(middleware.ContextUserIDKey).(uuid.UUID)
+		user, err := authSvc.UpdateLocale(c.Request.Context(), userID, req.Locale)
+		if err != nil {
+			if errors.Is(err, auth.ErrInvalidLocale) {
+				c.JSON(http.StatusBadRequest, dto.ErrorResponse{Error: "invalid locale", Code: "validation.invalid_locale"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Error: "failed to update preferences", Code: "preferences.update_failed"})
+			return
+		}
+		c.JSON(http.StatusOK, toUserDTO(user))
+	})
 }
 
 func toUserDTO(user *model.User) dto.UserDTO {
-	return dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name, IsAdmin: user.IsAdmin}
+	locale := user.Locale
+	if locale == "" {
+		locale = "en"
+	}
+	return dto.UserDTO{ID: user.ID.String(), Email: user.Email, Name: user.Name, IsAdmin: user.IsAdmin, Locale: locale}
 }
 
 func setRefreshCookie(c *gin.Context, token string) {

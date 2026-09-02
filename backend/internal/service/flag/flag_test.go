@@ -2,6 +2,7 @@ package flag
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 type fakeFlagRepository struct {
 	byProjectAndKey map[string]*model.FeatureFlag
 	configs         map[string]*model.FlagEnvironmentConfig // "flagID|envID"
+	replaceErr      error
 }
 
 func newFakeFlagRepository() *fakeFlagRepository {
@@ -23,6 +25,26 @@ func newFakeFlagRepository() *fakeFlagRepository {
 		byProjectAndKey: map[string]*model.FeatureFlag{},
 		configs:         map[string]*model.FlagEnvironmentConfig{},
 	}
+}
+
+func (f *fakeFlagRepository) InTransaction(_ context.Context, fn func(repository.FlagRepository) error) error {
+	tx := &fakeFlagRepository{byProjectAndKey: make(map[string]*model.FeatureFlag, len(f.byProjectAndKey)), configs: make(map[string]*model.FlagEnvironmentConfig, len(f.configs)), replaceErr: f.replaceErr}
+	for key, flag := range f.byProjectAndKey {
+		copy := *flag
+		copy.Strategies = append([]model.FlagStrategy(nil), flag.Strategies...)
+		copy.Collaborators = append([]model.FlagCollaborator(nil), flag.Collaborators...)
+		tx.byProjectAndKey[key] = &copy
+	}
+	for key, config := range f.configs {
+		copy := *config
+		tx.configs[key] = &copy
+	}
+	if err := fn(tx); err != nil {
+		return err
+	}
+	f.byProjectAndKey = tx.byProjectAndKey
+	f.configs = tx.configs
+	return nil
 }
 
 func flagKey(projectID uuid.UUID, key string) string { return projectID.String() + "|" + key }
@@ -80,10 +102,30 @@ func (f *fakeFlagRepository) UpdateCore(ctx context.Context, flag *model.Feature
 	}
 	existing.Name = flag.Name
 	existing.Description = flag.Description
+	existing.Tags = flag.Tags
 	existing.PrerequisiteFlagKey = flag.PrerequisiteFlagKey
 	existing.PrerequisiteVariant = flag.PrerequisiteVariant
 	existing.UpdatedAt = time.Now()
 	return nil
+}
+
+func (f *fakeFlagRepository) AddCollaborator(ctx context.Context, flagID, userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return nil
+	}
+	for _, existing := range f.byProjectAndKey {
+		if existing.ID != flagID {
+			continue
+		}
+		for _, collaborator := range existing.Collaborators {
+			if collaborator.UserID == userID {
+				return nil
+			}
+		}
+		existing.Collaborators = append(existing.Collaborators, model.FlagCollaborator{FlagID: flagID, UserID: userID})
+		return nil
+	}
+	return repository.ErrNotFound
 }
 
 func (f *fakeFlagRepository) SetArchived(ctx context.Context, projectID uuid.UUID, key string, archived bool) error {
@@ -107,6 +149,9 @@ func (f *fakeFlagRepository) Delete(ctx context.Context, projectID uuid.UUID, ke
 }
 
 func (f *fakeFlagRepository) ReplaceStrategies(ctx context.Context, flagID, environmentID uuid.UUID, strategies []model.FlagStrategy) error {
+	if f.replaceErr != nil {
+		return f.replaceErr
+	}
 	for _, fl := range f.byProjectAndKey {
 		if fl.ID == flagID {
 			kept := make([]model.FlagStrategy, 0, len(fl.Strategies))
@@ -213,7 +258,25 @@ func TestFlagService_Update(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
-func TestFlagService_Update_RequiresExactlyOneDefaultStrategy(t *testing.T) {
+func TestFlagService_Update_RollsBackCoreChangesWhenStrategyReplacementFails(t *testing.T) {
+	repo := newFakeFlagRepository()
+	svc := NewService(repo)
+	ctx := context.Background()
+	projectID := uuid.New()
+	envID := uuid.New()
+	_, err := svc.Create(ctx, projectID, envID, "f1", "Original", "", "boolean", true, boolStrategies(), "", "")
+	require.NoError(t, err)
+
+	repo.replaceErr = errors.New("replace strategies failed")
+	name := "Changed"
+	_, err = svc.Update(ctx, projectID, envID, "f1", UpdateInput{Name: &name, Strategies: boolStrategies()})
+	require.ErrorIs(t, err, repo.replaceErr)
+
+	stored := repo.byProjectAndKey[flagKey(projectID, "f1")]
+	assert.Equal(t, "Original", stored.Name)
+}
+
+func TestFlagService_Update_AllowsStrategiesWithoutDefault(t *testing.T) {
 	repo := newFakeFlagRepository()
 	svc := NewService(repo)
 	ctx := context.Background()
@@ -224,8 +287,26 @@ func TestFlagService_Update_RequiresExactlyOneDefaultStrategy(t *testing.T) {
 	require.NoError(t, err)
 
 	noDefault := []StrategyInput{{DefaultVariant: "off", Variants: []StrategyVariantInput{{Key: "off", Value: []byte("false")}}}}
-	_, err = svc.Update(ctx, projectID, envID, "f1", UpdateInput{Strategies: noDefault})
-	assert.ErrorIs(t, err, ErrStrategyDefaultCount)
+	updated, err := svc.Update(ctx, projectID, envID, "f1", UpdateInput{Strategies: noDefault})
+	require.NoError(t, err)
+	require.Len(t, updated.Strategies, 1)
+	assert.False(t, updated.Strategies[0].IsDefault)
+}
+
+func TestFlagService_RejectsDuplicateStrategyPriorities(t *testing.T) {
+	repo := newFakeFlagRepository()
+	svc := NewService(repo)
+	ctx := context.Background()
+	projectID := uuid.New()
+	envID := uuid.New()
+	strategies := []StrategyInput{
+		{Order: 1, DefaultVariant: "on", Variants: []StrategyVariantInput{{Key: "on", Value: []byte("true")}}},
+		{Order: 1, DefaultVariant: "off", Variants: []StrategyVariantInput{{Key: "off", Value: []byte("false")}}},
+	}
+
+	_, err := svc.Create(ctx, projectID, envID, "f1", "F1", "", "boolean", true, strategies, "", "")
+	assert.ErrorIs(t, err, ErrDuplicatePriority)
+	assert.Empty(t, repo.byProjectAndKey)
 }
 
 func TestFlagService_EvaluateAll(t *testing.T) {
@@ -299,13 +380,13 @@ func TestFlagService_Prerequisite(t *testing.T) {
 	require.NoError(t, err)
 	dependentStrategies := []StrategyInput{
 		{Order: 1, ConditionJSON: []byte(`true`), DefaultVariant: "on", Variants: []StrategyVariantInput{{Key: "on", Value: []byte("true")}}},
-		{Name: "Default", IsDefault: true, DefaultVariant: "off", Variants: []StrategyVariantInput{{Key: "on", Value: []byte("true")}, {Key: "off", Value: []byte("false")}}},
+		{Order: 99, ConditionJSON: []byte(`true`), DefaultVariant: "off", Variants: []StrategyVariantInput{{Key: "on", Value: []byte("true")}, {Key: "off", Value: []byte("false")}}},
 	}
 	_, err = svc.Create(ctx, projectID, envID, "dependent", "Dependent", "", "boolean", true, dependentStrategies, "base", "on")
 	require.NoError(t, err)
 
 	res := svc.Evaluate(ctx, projectID, envID, "dependent", map[string]any{})
-	assert.Equal(t, "off", res.Variant, "prerequisite defaults to off, so dependent should fall back to its default")
+	assert.Empty(t, res.Variant, "a failed prerequisite does not select a strategy")
 	assert.Equal(t, "PREREQUISITE_FAILED", res.Reason)
 
 	baseOnStrategies := []StrategyInput{{Name: "Default", IsDefault: true, DefaultVariant: "on", Variants: []StrategyVariantInput{{Key: "on", Value: []byte("true")}, {Key: "off", Value: []byte("false")}}}}

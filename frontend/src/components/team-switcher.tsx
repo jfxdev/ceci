@@ -1,4 +1,4 @@
-import { ChevronsUpDown, Flag, Plus } from "lucide-react"
+import { ChevronsUpDown, Flag, Leaf, Plus } from "lucide-react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 
@@ -17,6 +17,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { api } from "@/lib/api"
+import { useTranslation } from "react-i18next"
 
 interface Project {
   id: string
@@ -26,6 +27,7 @@ interface Project {
 
 /** Project switcher, standing in for the block's "team switcher" — leaflag's top-level entity is the project. */
 export function TeamSwitcher() {
+  const { t } = useTranslation()
   const { isMobile } = useSidebar()
   const navigate = useNavigate()
   const { projectId } = useParams<{ projectId: string }>()
@@ -47,11 +49,11 @@ export function TeamSwitcher() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <Flag className="size-4" />
+                <Leaf className="size-4" aria-label="LeaFlag" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{activeProject?.name ?? "LeaFlag"}</span>
-                <span className="truncate text-xs">{activeProject?.slug ?? "Select a project"}</span>
+	              <span className="truncate text-xs">{activeProject?.slug ?? t("projects.selectProject")}</span>
               </div>
               <ChevronsUpDown className="ml-auto" />
             </SidebarMenuButton>
@@ -62,7 +64,7 @@ export function TeamSwitcher() {
             side={isMobile ? "bottom" : "right"}
             sideOffset={4}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Projects</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">{t("projects.title")}</DropdownMenuLabel>
             {projects.map((project) => (
               <DropdownMenuItem
                 key={project.id}
@@ -80,7 +82,7 @@ export function TeamSwitcher() {
               <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
                 <Plus className="size-4" />
               </div>
-              <div className="font-medium text-muted-foreground">All projects</div>
+              <div className="font-medium text-muted-foreground">{t("nav.allProjects")}</div>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

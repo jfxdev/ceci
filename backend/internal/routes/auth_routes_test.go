@@ -32,8 +32,10 @@ type fakeAuthService struct {
 
 	logoutErr error
 
-	meUser *model.User
-	meErr  error
+	meUser      *model.User
+	meErr       error
+	updatedUser *model.User
+	updateErr   error
 
 	parseUserID uuid.UUID
 	parseErr    error
@@ -57,6 +59,10 @@ func (f *fakeAuthService) Logout(ctx context.Context, rawRefresh string) error {
 
 func (f *fakeAuthService) Me(ctx context.Context, userID uuid.UUID) (*model.User, error) {
 	return f.meUser, f.meErr
+}
+
+func (f *fakeAuthService) UpdateLocale(ctx context.Context, userID uuid.UUID, locale string) (*model.User, error) {
+	return f.updatedUser, f.updateErr
 }
 
 func (f *fakeAuthService) ParseAccessToken(tokenStr string) (uuid.UUID, error) {
@@ -113,6 +119,7 @@ func TestLoginRoute_BadRequest(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"validation.invalid_login_request"`)
 }
 
 func TestMeRoute_Unauthorized(t *testing.T) {
@@ -141,6 +148,29 @@ func TestMeRoute_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "a@b.com")
+}
+
+func TestUpdatePreferencesRoute(t *testing.T) {
+	userID := uuid.New()
+	fake := &fakeAuthService{parseUserID: userID, updatedUser: &model.User{ID: userID, Email: "a@b.com", Locale: "pt-BR"}}
+	r := newTestRouter(fake)
+	req := httptest.NewRequest(http.MethodPut, "/me/preferences", bytes.NewBufferString(`{"locale":"pt-BR"}`))
+	req.Header.Set("Authorization", "Bearer sometoken")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"locale":"pt-BR"`)
+}
+
+func TestErrorResponseIncludesStableCode(t *testing.T) {
+	fake := &fakeAuthService{loginErr: assert.AnError}
+	r := newTestRouter(fake)
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewBufferString(`{"email":"a@b.com","password":"wrong"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Contains(t, w.Body.String(), `"code":"error.invalid_credentials"`)
 }
 
 func TestRegisterRoute_Success(t *testing.T) {
@@ -187,6 +217,7 @@ func TestRegisterRoute_BadRequest(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"validation.invalid_registration_request"`)
 }
 
 func TestRefreshRoute_MissingCookie(t *testing.T) {

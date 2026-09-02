@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { DataTable, type DataTableColumn } from "@/components/shared/data-table"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 
 interface Project {
   id: string
@@ -52,6 +53,7 @@ function slugFromName(value: string) {
 export function ProjectListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.get<Project[]>("/projects"),
@@ -115,7 +117,7 @@ export function ProjectListPage() {
   const columns: DataTableColumn<Project>[] = [
     {
       key: "name",
-      header: "Project",
+      header: t("projects.project"),
       render: (project) => (
         <div className="flex items-center gap-3">
           <ProjectMark project={project} size="small" />
@@ -125,7 +127,7 @@ export function ProjectListPage() {
     },
     {
       key: "slug",
-      header: "Project key",
+      header: t("projects.projectKey"),
       render: (project) => <code className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">{project.slug}</code>,
     },
     {
@@ -141,7 +143,7 @@ export function ProjectListPage() {
             navigate(`/projects/${project.id}/overview`)
           }}
         >
-          Open
+          {t("projects.open")}
         </Button>
       ),
     },
@@ -158,11 +160,11 @@ export function ProjectListPage() {
           <div className="max-w-2xl">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Sparkles className="size-4 text-primary" />
-              Your workspace
+              {t("projects.workspace")}
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Projects</h1>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("projects.title")}</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">
-              Keep feature flags, parameters, and access organized in focused project spaces.
+              {t("projects.intro")}
             </p>
           </div>
           <NewProjectDialog
@@ -192,9 +194,9 @@ export function ProjectListPage() {
         <>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Your projects</h2>
+              <h2 className="text-lg font-semibold">{t("projects.yourProjects")}</h2>
               <p className="text-sm text-muted-foreground">
-                {projects.length} {projects.length === 1 ? "project" : "projects"} available to you
+                {t(projects.length === 1 ? "projects.available_one" : "projects.available_other", { count: projects.length })}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -203,17 +205,17 @@ export function ProjectListPage() {
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search projects"
+                  placeholder={t("projects.search")}
                   className="pl-9"
-                  aria-label="Search projects"
+                  aria-label={t("projects.search")}
                 />
               </div>
-              <div className="flex rounded-md border bg-background p-1" aria-label="Project view">
+              <div className="flex rounded-md border bg-background p-1" aria-label={t("projects.projectView")}>
                 <Button
                   variant={viewMode === "grid" ? "secondary" : "ghost"}
                   size="icon-sm"
                   onClick={() => setViewMode("grid")}
-                  aria-label="Grid view"
+                  aria-label={t("projects.gridView")}
                 >
                   <Grid2X2 />
                 </Button>
@@ -221,7 +223,7 @@ export function ProjectListPage() {
                   variant={viewMode === "list" ? "secondary" : "ghost"}
                   size="icon-sm"
                   onClick={() => setViewMode("list")}
-                  aria-label="List view"
+                  aria-label={t("projects.listView")}
                 >
                   <List />
                 </Button>
@@ -280,27 +282,28 @@ function NewProjectDialog({
   onEnvironmentTemplateChange: (templateKey: string, selected: boolean) => void
   onSubmit: (event: FormEvent) => void
 }) {
+  const { t } = useTranslation()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button size="lg">
           <Plus />
-          New project
+          {t("projects.new")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create a project</DialogTitle>
-          <p className="text-sm text-muted-foreground">A project is a shared home for your configuration and team.</p>
+          <DialogTitle>{t("projects.createTitle")}</DialogTitle>
+          <p className="text-sm text-muted-foreground">{t("projects.createDescription")}</p>
         </DialogHeader>
         <form className="flex flex-col gap-5" onSubmit={onSubmit}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="name">Project name</Label>
-            <Input id="name" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="e.g. Customer portal" required />
+            <Label htmlFor="name">{t("projects.projectName")}</Label>
+            <Input id="name" value={name} onChange={(event) => onNameChange(event.target.value)} placeholder={t("projects.projectNamePlaceholder")} required />
           </div>
           {environmentTemplates.length > 0 && (
             <div className="flex flex-col gap-2">
-              <Label>Project environments</Label>
+              <Label>{t("projects.environments")}</Label>
               <div className="rounded-lg border">
                 {environmentTemplates.map((template) => {
                   const checked = template.isRequired || selectedEnvironmentTemplateKeys.includes(template.key)
@@ -315,22 +318,22 @@ function NewProjectDialog({
                         <span className="block text-sm font-medium">{template.name}</span>
                         <code className="text-xs text-muted-foreground">{template.key}</code>
                       </span>
-                      {template.isRequired && <span className="text-xs font-medium text-muted-foreground">Required</span>}
+                      {template.isRequired && <span className="text-xs font-medium text-muted-foreground">{t("projects.required")}</span>}
                     </label>
                   )
                 })}
               </div>
-              <p className="text-xs text-muted-foreground">Required environments are always included in new projects.</p>
+              <p className="text-xs text-muted-foreground">{t("projects.requiredDescription")}</p>
             </div>
           )}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="slug">Project key</Label>
+            <Label htmlFor="slug">{t("projects.projectKey")}</Label>
             <Input id="slug" value={slug} onChange={(event) => onSlugChange(event.target.value)} placeholder="customer-portal" required />
-            <p className="text-xs text-muted-foreground">Used to identify this project in the URL and API.</p>
+            <p className="text-xs text-muted-foreground">{t("projects.keyDescription")}</p>
           </div>
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting || !name.trim() || !slug.trim()}>
-              {isSubmitting ? "Creating…" : "Create project"}
+              {isSubmitting ? t("projects.creating") : t("projects.create")}
             </Button>
           </DialogFooter>
         </form>
@@ -354,6 +357,7 @@ function ProjectMark({ project, size = "default" }: { project: Project; size?: "
 }
 
 function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void }) {
+  const { t } = useTranslation()
   return (
     <Card className="group gap-5 py-5 transition-shadow hover:shadow-md">
       <CardHeader className="px-5">
@@ -365,9 +369,9 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
       </CardHeader>
       <CardContent className="px-5">
         <div className="flex items-center justify-between border-t pt-4">
-          <span className="text-xs text-muted-foreground">Configuration workspace</span>
+          <span className="text-xs text-muted-foreground">{t("projects.configurationWorkspace")}</span>
           <Button variant="ghost" size="sm" onClick={onOpen}>
-            Open
+            {t("projects.open")}
           </Button>
         </div>
       </CardContent>
@@ -376,6 +380,7 @@ function ProjectCard({ project, onOpen }: { project: Project; onOpen: () => void
 }
 
 function EmptyProjects({ isLoading, onCreate }: { isLoading: boolean; onCreate: () => void }) {
+  const { t } = useTranslation()
   if (isLoading) {
     return <Card className="min-h-80 animate-pulse bg-muted/30" />
   }
@@ -387,21 +392,21 @@ function EmptyProjects({ isLoading, onCreate }: { isLoading: boolean; onCreate: 
           <div className="mb-5 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <FolderKanban className="size-6" />
           </div>
-          <h2 className="text-xl font-semibold">Create your first project</h2>
+          <h2 className="text-xl font-semibold">{t("projects.emptyTitle")}</h2>
           <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
-            Projects keep each product’s flags, runtime parameters, environments, and member access in one place.
+            {t("projects.emptyDescription")}
           </p>
           <Button className="mt-6" onClick={onCreate}>
             <Plus />
-            Create project
+            {t("projects.create")}
           </Button>
         </div>
         <div className="border-t bg-muted/40 p-6 lg:border-l lg:border-t-0 sm:p-8">
-          <p className="text-sm font-medium">What you can do next</p>
+          <p className="text-sm font-medium">{t("projects.next")}</p>
           <div className="mt-5 space-y-4">
-            <EmptyStep icon={<Settings2 className="size-4" />} title="Organize configuration" description="Keep flags and parameters together." />
-            <EmptyStep icon={<Sparkles className="size-4" />} title="Ship with confidence" description="Control rollouts per environment." />
-            <EmptyStep icon={<FolderKanban className="size-4" />} title="Invite your team" description="Give teammates the right level of access." />
+            <EmptyStep icon={<Settings2 className="size-4" />} title={t("projects.organizeTitle")} description={t("projects.organizeDescription")} />
+            <EmptyStep icon={<Sparkles className="size-4" />} title={t("projects.shipTitle")} description={t("projects.shipDescription")} />
+            <EmptyStep icon={<FolderKanban className="size-4" />} title={t("projects.inviteTitle")} description={t("projects.inviteDescription")} />
           </div>
         </div>
       </div>
@@ -422,15 +427,16 @@ function EmptyStep({ icon, title, description }: { icon: React.ReactNode; title:
 }
 
 function NoSearchResults({ onClear }: { onClear: () => void }) {
+  const { t } = useTranslation()
   return (
     <Card className="items-center gap-3 py-12 text-center">
       <Search className="size-5 text-muted-foreground" />
       <div>
-        <CardTitle className="text-base">No projects found</CardTitle>
-        <CardDescription className="mt-1">Try a different project name or key.</CardDescription>
+        <CardTitle className="text-base">{t("projects.notFound")}</CardTitle>
+        <CardDescription className="mt-1">{t("projects.notFoundDescription")}</CardDescription>
       </div>
       <Button variant="outline" size="sm" onClick={onClear}>
-        Clear search
+        {t("projects.clearSearch")}
       </Button>
     </Card>
   )

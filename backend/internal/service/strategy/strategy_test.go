@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"math"
 	"testing"
 
 	"github.com/google/uuid"
@@ -18,15 +19,15 @@ func boolVariants() []model.FlagStrategyVariant {
 	}
 }
 
-// boolFlag returns a Flag with just the mandatory catch-all default strategy
-// (serving "off"). Tests append additional, higher-priority strategies to
-// exercise targeting/rollout ahead of the default.
+// boolFlag returns a Flag with an explicit, lowest-priority fallback strategy.
+// Production flags do not receive this strategy automatically; tests use it
+// where they need a known non-matching outcome.
 func boolFlag(enabled bool) Flag {
 	return Flag{
 		Key:     "new-checkout",
 		Enabled: enabled,
 		Strategies: []model.FlagStrategy{
-			{IsDefault: true, DefaultVariant: "off", Variants: boolVariants()},
+			{Priority: 99, ConditionJSON: datatypes.JSON(`true`), DefaultVariant: "off", Variants: boolVariants()},
 		},
 	}
 }
@@ -46,15 +47,16 @@ func TestEvaluate_Disabled(t *testing.T) {
 	f := boolFlag(false)
 	res := Evaluate(f, map[string]any{})
 	assert.Equal(t, constants.ReasonDisabled, res.Reason)
-	assert.Equal(t, "off", res.Variant)
-	assert.Equal(t, false, res.Value)
+	assert.Empty(t, res.Variant)
+	assert.Nil(t, res.Value)
 }
 
-func TestEvaluate_StaticNoRules(t *testing.T) {
-	f := boolFlag(true)
+func TestEvaluate_NoStrategiesReturnsNoMatch(t *testing.T) {
+	f := Flag{Key: "new-checkout", Enabled: true}
 	res := Evaluate(f, map[string]any{})
-	assert.Equal(t, constants.ReasonStatic, res.Reason)
-	assert.Equal(t, "off", res.Variant)
+	assert.Equal(t, constants.ReasonNoMatch, res.Reason)
+	assert.Empty(t, res.Variant)
+	assert.Empty(t, res.ErrorCode)
 }
 
 func TestEvaluate_TargetingMatch(t *testing.T) {
@@ -66,12 +68,12 @@ func TestEvaluate_TargetingMatch(t *testing.T) {
 	assert.Equal(t, true, res.Value)
 }
 
-func TestEvaluate_DefaultWhenNoRuleMatches(t *testing.T) {
-	f := boolFlag(true)
-	f.Strategies = append(f.Strategies, targetingStrategy(1, `{"==": [{"var": "plan"}, "pro"]}`, "on"))
+func TestEvaluate_NoMatchingStrategyReturnsNoMatch(t *testing.T) {
+	f := Flag{Key: "new-checkout", Enabled: true, Strategies: []model.FlagStrategy{targetingStrategy(1, `{"==": [{"var": "plan"}, "pro"]}`, "on")}}
 	res := Evaluate(f, map[string]any{"plan": "free"})
-	assert.Equal(t, constants.ReasonDefault, res.Reason)
-	assert.Equal(t, "off", res.Variant)
+	assert.Equal(t, constants.ReasonNoMatch, res.Reason)
+	assert.Empty(t, res.Variant)
+	assert.Empty(t, res.ErrorCode)
 }
 
 func TestEvaluate_RulePriorityOrder(t *testing.T) {
@@ -82,6 +84,16 @@ func TestEvaluate_RulePriorityOrder(t *testing.T) {
 	)
 	res := Evaluate(f, map[string]any{})
 	assert.Equal(t, "on", res.Variant, "lower priority number should be evaluated first")
+}
+
+func TestEvaluate_RulePriorityOrderAtIntegerExtremes(t *testing.T) {
+	f := Flag{Key: "new-checkout", Enabled: true, Strategies: []model.FlagStrategy{
+		targetingStrategy(math.MaxInt, `true`, "off"),
+		targetingStrategy(-1, `true`, "on"),
+	}}
+
+	res := Evaluate(f, map[string]any{})
+	assert.Equal(t, "on", res.Variant)
 }
 
 func TestEvaluate_AndOrOperators(t *testing.T) {
@@ -270,13 +282,14 @@ func TestDefaultVariantsFor(t *testing.T) {
 	assert.NoError(t, ValidateVariantValues(constants.FlagTypeObject, variants))
 }
 
-func TestValidateStrategies_RequiresExactlyOneDefault(t *testing.T) {
+func TestValidateStrategies_AllowsEmptyAndDoesNotRequireDefault(t *testing.T) {
 	oneDefault := []Input{{IsDefault: true, DefaultVariant: "off", Variants: []VariantInput{{Key: "off", Value: []byte("false")}}}}
 	assert.NoError(t, Validate(constants.FlagTypeBoolean, oneDefault))
 
 	noDefault := []Input{{DefaultVariant: "off", Variants: []VariantInput{{Key: "off", Value: []byte("false")}}}}
-	assert.ErrorIs(t, Validate(constants.FlagTypeBoolean, noDefault), ErrDefaultCount)
+	assert.NoError(t, Validate(constants.FlagTypeBoolean, noDefault))
 
 	twoDefaults := append(oneDefault, oneDefault[0])
-	assert.ErrorIs(t, Validate(constants.FlagTypeBoolean, twoDefaults), ErrDefaultCount)
+	assert.ErrorIs(t, Validate(constants.FlagTypeBoolean, twoDefaults), ErrDuplicatePriority)
+	assert.NoError(t, Validate(constants.FlagTypeBoolean, nil))
 }

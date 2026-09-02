@@ -9,8 +9,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 
 	"leaflag/backend/internal/constants"
 	"leaflag/backend/internal/model"
@@ -31,9 +33,9 @@ type (
 )
 
 var (
-	ErrVariantTypeMismatch  = strategy.ErrVariantTypeMismatch
-	ErrUnknownFlagType      = strategy.ErrUnknownFlagType
-	ErrStrategyDefaultCount = strategy.ErrDefaultCount
+	ErrVariantTypeMismatch = strategy.ErrVariantTypeMismatch
+	ErrUnknownFlagType     = strategy.ErrUnknownFlagType
+	ErrDuplicatePriority   = strategy.ErrDuplicatePriority
 )
 
 type Service struct {
@@ -64,14 +66,7 @@ func (s *Service) Get(ctx context.Context, projectID, environmentID uuid.UUID, k
 // its targeting strategies for the environment it's being created in. Other
 // environments start it disabled until explicitly configured (see
 // strategy.Flatten).
-func (s *Service) Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []StrategyInput, prerequisiteFlagKey, prerequisiteVariant string) (*model.FeatureFlag, error) {
-	// Strategies are no longer required at creation time. When none are
-	// supplied, derive a single starting catch-all strategy from the flag
-	// type (on/off for boolean, a single "default" placeholder otherwise);
-	// the editor is where real strategies get added.
-	if len(strategies) == 0 {
-		strategies = []StrategyInput{strategy.DefaultFor(flagType)}
-	}
+func (s *Service) Create(ctx context.Context, projectID, environmentID uuid.UUID, key, name, description, flagType string, enabled bool, strategies []StrategyInput, prerequisiteFlagKey, prerequisiteVariant string, actors ...uuid.UUID) (*model.FeatureFlag, error) {
 	if err := strategy.Validate(flagType, strategies); err != nil {
 		return nil, err
 	}
@@ -83,6 +78,10 @@ func (s *Service) Create(ctx context.Context, projectID, environmentID uuid.UUID
 		FlagType:            flagType,
 		PrerequisiteFlagKey: prerequisiteFlagKey,
 		PrerequisiteVariant: prerequisiteVariant,
+	}
+	if len(actors) > 0 && actors[0] != uuid.Nil {
+		flag.CreatedByID = &actors[0]
+		flag.Collaborators = []model.FlagCollaborator{{UserID: actors[0]}}
 	}
 	if err := s.flags.Create(ctx, flag); err != nil {
 		return nil, err
@@ -100,13 +99,14 @@ func (s *Service) Create(ctx context.Context, projectID, environmentID uuid.UUID
 type UpdateInput struct {
 	Name                *string
 	Description         *string
+	Tags                *[]string
 	Enabled             *bool
 	Strategies          []StrategyInput
 	PrerequisiteFlagKey *string
 	PrerequisiteVariant *string
 }
 
-func (s *Service) Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in UpdateInput) (*model.FeatureFlag, error) {
+func (s *Service) Update(ctx context.Context, projectID, environmentID uuid.UUID, key string, in UpdateInput, actors ...uuid.UUID) (*model.FeatureFlag, error) {
 	flag, err := s.Get(ctx, projectID, environmentID, key)
 	if err != nil {
 		return nil, err
@@ -120,6 +120,10 @@ func (s *Service) Update(ctx context.Context, projectID, environmentID uuid.UUID
 		flag.Description = *in.Description
 		coreChanged = true
 	}
+	if in.Tags != nil {
+		flag.Tags = datatypes.NewJSONSlice(normalizeTags(*in.Tags))
+		coreChanged = true
+	}
 	if in.PrerequisiteFlagKey != nil {
 		flag.PrerequisiteFlagKey = *in.PrerequisiteFlagKey
 		coreChanged = true
@@ -128,26 +132,61 @@ func (s *Service) Update(ctx context.Context, projectID, environmentID uuid.UUID
 		flag.PrerequisiteVariant = *in.PrerequisiteVariant
 		coreChanged = true
 	}
-	if coreChanged {
-		if err := s.flags.UpdateCore(ctx, flag); err != nil {
-			return nil, err
-		}
-	}
+	changed := coreChanged
 	if in.Strategies != nil {
 		if err := strategy.Validate(flag.FlagType, in.Strategies); err != nil {
 			return nil, err
 		}
-		if err := s.flags.ReplaceStrategies(ctx, flag.ID, environmentID, strategy.ToModels(flag.ID, environmentID, in.Strategies)); err != nil {
-			return nil, err
-		}
 	}
-	if in.Enabled != nil {
-		if err := s.flags.UpsertEnvironmentConfig(ctx, flag.ID, environmentID, *in.Enabled); err != nil {
+	if in.Strategies != nil || in.Enabled != nil {
+		changed = true
+	}
+	if changed {
+		if err := s.flags.InTransaction(ctx, func(flags repository.FlagRepository) error {
+			if coreChanged {
+				if err := flags.UpdateCore(ctx, flag); err != nil {
+					return err
+				}
+			}
+			if in.Strategies != nil {
+				if err := flags.ReplaceStrategies(ctx, flag.ID, environmentID, strategy.ToModels(flag.ID, environmentID, in.Strategies)); err != nil {
+					return err
+				}
+			}
+			if in.Enabled != nil {
+				if err := flags.UpsertEnvironmentConfig(ctx, flag.ID, environmentID, *in.Enabled); err != nil {
+					return err
+				}
+			}
+			if len(actors) > 0 {
+				if err := flags.AddCollaborator(ctx, flag.ID, actors[0]); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
 			return nil, err
 		}
 	}
 	s.broadcaster.Publish(projectID)
 	return s.flags.FindByKey(ctx, projectID, environmentID, key)
+}
+
+func normalizeTags(tags []string) []string {
+	normalized := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		if _, exists := seen[tag]; exists {
+			continue
+		}
+		seen[tag] = struct{}{}
+		normalized = append(normalized, tag)
+	}
+	return normalized
 }
 
 func (s *Service) Delete(ctx context.Context, projectID uuid.UUID, key string) error {

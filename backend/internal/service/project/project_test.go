@@ -262,6 +262,13 @@ func (f *fakeUserRepository) SetAdmin(ctx context.Context, id uuid.UUID, isAdmin
 	return nil
 }
 
+func (f *fakeUserRepository) SetLocale(ctx context.Context, id uuid.UUID, locale string) error {
+	if user, ok := f.usersByID[id]; ok {
+		user.Locale = locale
+	}
+	return nil
+}
+
 func (f *fakeUserRepository) CreateRefreshToken(ctx context.Context, rt *model.RefreshToken) error {
 	return nil
 }
