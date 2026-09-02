@@ -224,20 +224,44 @@ function isCombinatorGroup(condition: unknown): condition is Record<Combinator, 
 }
 
 function isEditableLeaf(condition: unknown): boolean {
-	if (!condition || typeof condition !== "object") return false
-	const notArg = (condition as Record<string, unknown>)["!"]
-	if (notArg !== undefined) return isEditableLeaf(Array.isArray(notArg) && notArg.length === 1 ? notArg[0] : notArg)
-	return OPERATORS.some((operator) => {
-		const args = (condition as Record<string, unknown>)[operator]
-		return Array.isArray(args) && args.length === 2 && typeof (args[0] as { var?: unknown })?.var === "string"
-	})
+	let leaf = condition
+	let negationCount = 0
+	while (leaf && typeof leaf === "object" && "!" in leaf) {
+		const wrapper = leaf as Record<string, unknown>
+		if (Object.keys(wrapper).length !== 1 || ++negationCount > 1) return false
+		const argument = wrapper["!"]
+		leaf = Array.isArray(argument) ? argument.length === 1 ? argument[0] : undefined : argument
+	}
+	if (!leaf || typeof leaf !== "object") return false
+
+	const node = leaf as Record<string, unknown>
+	for (const operator of OPERATORS) {
+		if (!(operator in node) || Object.keys(node).length !== 1) continue
+		const args = node[operator]
+		if (!Array.isArray(args) || args.length !== 2) return false
+		const [left, right] = args
+		if (!left || typeof left !== "object" || Array.isArray(left) || Object.keys(left).length !== 1 || typeof (left as { var?: unknown }).var !== "string") return false
+		if (operator === "in" || operator === "not in") {
+			return Array.isArray(right) && right.length > 0 && right.every((value) => typeof value === "string" && value.trim() === value && !value.includes(","))
+		}
+		return typeof right === "string"
+	}
+	return false
 }
 
 export function isEditableCondition(condition: unknown): boolean {
 	if (isEditableLeaf(condition)) return true
 	if (!isCombinatorGroup(condition)) return false
 	const combinator = COMBINATORS.find((candidate) => Array.isArray(condition[candidate]))!
-	return condition[combinator].every(isEditableLeaf)
+	const items = condition[combinator]
+	if (Object.keys(condition).length !== 1 || items.length === 0) return false
+	let nestedGroups = 0
+	return items.every((item) => {
+		if (isEditableLeaf(item)) return true
+		if (!isCombinatorGroup(item) || Object.keys(item).length !== 1 || ++nestedGroups > 1) return false
+		const nestedCombinator = COMBINATORS.find((candidate) => Array.isArray(item[candidate]))!
+		return item[nestedCombinator].length > 0 && item[nestedCombinator].every(isEditableLeaf)
+	})
 }
 
 function conditionToItem(condition: unknown): TargetingItem {

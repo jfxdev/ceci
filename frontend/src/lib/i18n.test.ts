@@ -12,7 +12,7 @@ function keys(value: object, prefix = ""): string[] {
 
 describe("i18n resources", () => {
   it("keeps English and Brazilian Portuguese keys in sync", () => {
-    expect(keys(ptBR)).toEqual(keys(en))
+    expect(keys(ptBR).sort()).toEqual(keys(en).sort())
   })
 
   it("switches translations without reloading the application", async () => {

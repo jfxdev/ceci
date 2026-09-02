@@ -132,29 +132,39 @@ func (s *Service) Update(ctx context.Context, projectID, environmentID uuid.UUID
 		flag.PrerequisiteVariant = *in.PrerequisiteVariant
 		coreChanged = true
 	}
-	if coreChanged {
-		if err := s.flags.UpdateCore(ctx, flag); err != nil {
-			return nil, err
-		}
-	}
 	changed := coreChanged
 	if in.Strategies != nil {
 		if err := strategy.Validate(flag.FlagType, in.Strategies); err != nil {
 			return nil, err
 		}
-		if err := s.flags.ReplaceStrategies(ctx, flag.ID, environmentID, strategy.ToModels(flag.ID, environmentID, in.Strategies)); err != nil {
-			return nil, err
-		}
+	}
+	if in.Strategies != nil || in.Enabled != nil {
 		changed = true
 	}
-	if in.Enabled != nil {
-		if err := s.flags.UpsertEnvironmentConfig(ctx, flag.ID, environmentID, *in.Enabled); err != nil {
-			return nil, err
-		}
-		changed = true
-	}
-	if changed && len(actors) > 0 {
-		if err := s.flags.AddCollaborator(ctx, flag.ID, actors[0]); err != nil {
+	if changed {
+		if err := s.flags.InTransaction(ctx, func(flags repository.FlagRepository) error {
+			if coreChanged {
+				if err := flags.UpdateCore(ctx, flag); err != nil {
+					return err
+				}
+			}
+			if in.Strategies != nil {
+				if err := flags.ReplaceStrategies(ctx, flag.ID, environmentID, strategy.ToModels(flag.ID, environmentID, in.Strategies)); err != nil {
+					return err
+				}
+			}
+			if in.Enabled != nil {
+				if err := flags.UpsertEnvironmentConfig(ctx, flag.ID, environmentID, *in.Enabled); err != nil {
+					return err
+				}
+			}
+			if len(actors) > 0 {
+				if err := flags.AddCollaborator(ctx, flag.ID, actors[0]); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
 			return nil, err
 		}
 	}

@@ -42,14 +42,14 @@ const DEFAULT_CONTEXT = `{
 }`
 
 const STATUS_LEGEND = [
-	{ status: "TARGETING_MATCH", descriptionKey: "pages.statusTargetingMatch" },
-	{ status: "SPLIT", descriptionKey: "pages.statusSplit" },
-	{ status: "NO_MATCH", descriptionKey: "pages.statusNoMatch" },
-	{ status: "DISABLED", descriptionKey: "pages.statusDisabled" },
-	{ status: "PREREQUISITE_FAILED", descriptionKey: "pages.statusPrerequisiteFailed" },
-	{ status: "DEFAULT", descriptionKey: "pages.statusDefault" },
-	{ status: "STATIC", descriptionKey: "pages.statusStatic" },
-	{ status: "ERROR", descriptionKey: "pages.statusError" },
+	{ status: "TARGETING_MATCH", labelKey: "pages.statusTargetingMatchLabel", descriptionKey: "pages.statusTargetingMatch" },
+	{ status: "SPLIT", labelKey: "pages.statusSplitLabel", descriptionKey: "pages.statusSplit" },
+	{ status: "NO_MATCH", labelKey: "pages.statusNoMatchLabel", descriptionKey: "pages.statusNoMatch" },
+	{ status: "DISABLED", labelKey: "pages.statusDisabledLabel", descriptionKey: "pages.statusDisabled" },
+	{ status: "PREREQUISITE_FAILED", labelKey: "pages.statusPrerequisiteFailedLabel", descriptionKey: "pages.statusPrerequisiteFailed" },
+	{ status: "DEFAULT", labelKey: "pages.statusDefaultLabel", descriptionKey: "pages.statusDefault" },
+	{ status: "STATIC", labelKey: "pages.statusStaticLabel", descriptionKey: "pages.statusStatic" },
+	{ status: "ERROR", labelKey: "pages.statusErrorLabel", descriptionKey: "pages.statusError" },
 ] as const
 
 export function PlaygroundPage() {
@@ -134,6 +134,10 @@ export function PlaygroundPage() {
   }
 
   const selectedContext = contextFields.find((field) => field.key === selectedContextKey)
+	const statusLabel = (status: string) => {
+		const knownStatus = STATUS_LEGEND.find((entry) => entry.status === status)
+		return knownStatus ? t(knownStatus.labelKey) : status
+	}
 
   function selectContext(key: string) {
     setSelectedContextKey(key)
@@ -154,7 +158,7 @@ export function PlaygroundPage() {
       render: (r) => <code className="text-sm">{r.value === undefined ? "-" : JSON.stringify(r.value)}</code>,
     },
 	{ key: "variant", header: t("pages.variant"), render: (r) => r.variant ?? "-" },
-	{ key: "reason", header: t("pages.reason"), render: (r) => <Badge variant="secondary">{r.reason}</Badge> },
+	{ key: "reason", header: t("pages.reason"), render: (r) => <Badge variant="secondary">{statusLabel(r.reason)}</Badge> },
     {
       key: "error",
 		 header: t("pages.error"),
@@ -278,9 +282,9 @@ export function PlaygroundPage() {
               </CardHeader>
               <CardContent>
                 <dl className="flex flex-col gap-3">
-	                  {STATUS_LEGEND.map(({ status, descriptionKey }) => (
+	                  {STATUS_LEGEND.map(({ status, labelKey, descriptionKey }) => (
                     <div key={status} className="flex flex-col gap-1">
-                      <dt><Badge variant="secondary">{status}</Badge></dt>
+	                      <dt><Badge variant="secondary">{t(labelKey)}</Badge></dt>
 	                      <dd className="text-xs leading-5 text-muted-foreground">{t(descriptionKey)}</dd>
                     </div>
                   ))}

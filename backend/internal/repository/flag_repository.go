@@ -15,6 +15,9 @@ import (
 var ErrDuplicateStrategyPriority = errors.New("strategy priorities must be unique")
 
 type FlagRepository interface {
+	// InTransaction runs related flag mutations in a single database
+	// transaction. The callback receives a repository bound to that transaction.
+	InTransaction(ctx context.Context, fn func(FlagRepository) error) error
 	List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error)
 	FindByKey(ctx context.Context, projectID, environmentID uuid.UUID, key string) (*model.FeatureFlag, error)
 	Create(ctx context.Context, flag *model.FeatureFlag) error
@@ -41,6 +44,12 @@ type postgresFlagRepository struct {
 
 func NewFlagRepository(db *gorm.DB) FlagRepository {
 	return &postgresFlagRepository{db: db}
+}
+
+func (r *postgresFlagRepository) InTransaction(ctx context.Context, fn func(FlagRepository) error) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(&postgresFlagRepository{db: tx})
+	})
 }
 
 func (r *postgresFlagRepository) List(ctx context.Context, projectID, environmentID uuid.UUID) ([]model.FeatureFlag, error) {

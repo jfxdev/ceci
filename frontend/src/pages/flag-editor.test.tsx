@@ -174,6 +174,25 @@ describe("ruleToCondition / conditionToRule round-trip", () => {
 })
 
 describe("isEditableCondition", () => {
+	it("accepts one nested group containing editable leaves", () => {
+		expect(isEditableCondition({
+			and: [
+				{ "==": [{ var: "plan" }, "pro"] },
+				{ or: [{ "==": [{ var: "country" }, "BR"] }, { "==": [{ var: "country" }, "US"] }] },
+			],
+		})).toBe(true)
+	})
+
+	it("rejects values that cannot round-trip through the editor", () => {
+		expect(isEditableCondition({ "==": [{ var: "plan" }, { tier: "pro" }] })).toBe(false)
+		expect(isEditableCondition({ "==": [{ var: "plan" }, { var: "expectedPlan" }] })).toBe(false)
+		expect(isEditableCondition({ in: [{ var: "country" }, ["US,CA"]] })).toBe(false)
+	})
+
+	it("rejects repeated negation wrappers", () => {
+		expect(isEditableCondition({ "!": { "!": { "==": [{ var: "plan" }, "pro"] } } })).toBe(false)
+	})
+
   it("rejects nested groups so the editor preserves their original JSONLogic", () => {
     expect(isEditableCondition({
       and: [

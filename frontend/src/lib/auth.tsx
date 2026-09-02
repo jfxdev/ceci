@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
 import { api, setAccessToken } from "@/lib/api"
 import i18n, { browserLocale, type AppLocale } from "@/lib/i18n"
 
@@ -24,21 +24,28 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const authSessionGeneration = useRef(0)
+
+  const applyUserForSession = useCallback(async (nextUser: CurrentUser, generation: number) => {
+    if (generation !== authSessionGeneration.current) return
+    setUser(nextUser)
+    if (generation !== authSessionGeneration.current) return
+    await i18n.changeLanguage(nextUser.locale)
+  }, [])
 
   // On first load there's no access token in memory yet (it's never
   // persisted client-side), so try to restore the session from the
   // httpOnly refresh cookie before deciding whether to show the login page.
   useEffect(() => {
     let cancelled = false
+		const generation = authSessionGeneration.current
     ;(async () => {
       try {
         const refreshed = await api.post<{ accessToken: string }>("/auth/refresh")
+			if (cancelled || generation !== authSessionGeneration.current) return
         setAccessToken(refreshed.accessToken)
         const me = await api.get<CurrentUser>("/me")
-        if (!cancelled) {
-          setUser(me)
-          void i18n.changeLanguage(me.locale)
-        }
+			if (!cancelled) await applyUserForSession(me, generation)
       } catch {
         if (!cancelled) setUser(null)
       } finally {
@@ -48,14 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [])
+	}, [applyUserForSession])
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await api.post<{ accessToken: string; user: CurrentUser }>("/auth/login", { email, password })
+		const generation = ++authSessionGeneration.current
     setAccessToken(data.accessToken)
-    setUser(data.user)
-    await i18n.changeLanguage(data.user.locale)
-  }, [])
+		await applyUserForSession(data.user, generation)
+  }, [applyUserForSession])
 
   const register = useCallback(async (email: string, password: string, name: string) => {
     const data = await api.post<{ accessToken: string; user: CurrentUser }>("/auth/register", {
@@ -63,27 +70,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       name,
     })
+		const generation = ++authSessionGeneration.current
     setAccessToken(data.accessToken)
-    setUser(data.user)
+		await applyUserForSession(data.user, generation)
     const locale = browserLocale()
     if (data.user.locale !== locale) {
-      void api.put<CurrentUser>("/me/preferences", { locale }).then(setUser).catch(() => undefined)
+		void api.put<CurrentUser>("/me/preferences", { locale }).then((user) => applyUserForSession(user, generation)).catch(() => undefined)
     }
-    await i18n.changeLanguage(locale)
-  }, [])
+		if (generation === authSessionGeneration.current) await i18n.changeLanguage(locale)
+  }, [applyUserForSession])
 
   const logout = useCallback(async () => {
     await api.post("/auth/logout")
+		++authSessionGeneration.current
     setAccessToken(null)
     setUser(null)
     await i18n.changeLanguage(browserLocale())
   }, [])
 
   const setLocale = useCallback(async (locale: AppLocale) => {
+		const generation = authSessionGeneration.current
     const user = await api.put<CurrentUser>("/me/preferences", { locale })
-    setUser(user)
-    await i18n.changeLanguage(locale)
-  }, [])
+		await applyUserForSession(user, generation)
+  }, [applyUserForSession])
 
   return <AuthContext.Provider value={{ user, isLoading, login, register, logout, setLocale }}>{children}</AuthContext.Provider>
 }

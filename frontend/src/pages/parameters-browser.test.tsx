@@ -19,6 +19,7 @@ vi.mock("@/lib/environment", () => ({
 }))
 
 import { parameterPath, ParametersBrowserPage } from "./parameters-browser"
+import "@/lib/i18n"
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -45,7 +46,7 @@ describe("ParametersBrowserPage", () => {
     const user = userEvent.setup()
     renderPage()
 
-    await user.click(await screen.findByRole("button", { name: "Edit" }))
+    await user.click(await screen.findByRole("button", { name: 'Edit "service/db/host"' }))
 
     expect(screen.getByRole("heading", { name: 'Edit "service/db/host"' })).toBeInTheDocument()
     expect(screen.getByLabelText("Key")).toHaveValue("service/db/host")

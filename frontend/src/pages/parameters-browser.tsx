@@ -55,7 +55,7 @@ export function ParametersBrowserPage() {
       setOpen(false)
       resetForm()
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to save parameter"),
+    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.failedToSaveParameter")),
   })
 
   const remove = useMutation({
@@ -64,16 +64,16 @@ export function ParametersBrowserPage() {
       queryClient.invalidateQueries({ queryKey: ["parameters", projectId, envKey] })
       setPendingDelete(null)
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Failed to delete parameter"),
+    onError: (err) => setError(err instanceof ApiError ? err.message : t("pages.failedToDeleteParameter")),
   })
 
   const columns: DataTableColumn<Parameter>[] = [
-    { key: "key", header: "Key", render: (p) => <code className="text-sm">{p.key}</code> },
-    { key: "value", header: "Value", render: (p) => p.value },
-    { key: "version", header: "Version", render: (p) => `v${p.version}` },
+    { key: "key", header: t("pages.parameterKey"), render: (p) => <code className="text-sm">{p.key}</code> },
+    { key: "value", header: t("pages.parameterValue"), render: (p) => p.value },
+    { key: "version", header: t("pages.parameterVersion"), render: (p) => `v${p.version}` },
     {
       key: "actions",
-      header: "",
+      header: t("pages.parameterActions"),
       className: "w-40 text-right",
       render: (p) => (
         <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
@@ -88,10 +88,10 @@ export function ParametersBrowserPage() {
               setOpen(true)
             }}
           >
-            Edit
+            {t("pages.editParameter", { key: p.key })}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => { setError(null); setPendingDelete(p) }}>
-            Delete
+            {t("common.delete")}
           </Button>
         </div>
       ),
@@ -112,7 +112,7 @@ export function ParametersBrowserPage() {
 	          <p className="mt-1 text-sm text-muted-foreground">{t("pages.parametersIntro")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Input placeholder="Filter by prefix..." value={prefix} onChange={(e) => setPrefix(e.target.value)} className="w-64" />
+          <Input placeholder={t("pages.filterParameters")} value={prefix} onChange={(e) => setPrefix(e.target.value)} className="w-64" />
           <Dialog
             open={open}
             onOpenChange={(nextOpen) => {
@@ -121,33 +121,33 @@ export function ParametersBrowserPage() {
             }}
           >
             <DialogTrigger asChild>
-              <Button onClick={resetForm}>Set parameter</Button>
+              <Button onClick={resetForm}>{t("pages.setParameter")}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{editingParameter ? `Edit "${editingParameter.key}"` : "Set parameter"}</DialogTitle>
+                <DialogTitle>{editingParameter ? t("pages.editParameter", { key: editingParameter.key }) : t("pages.setParameter")}</DialogTitle>
               </DialogHeader>
               <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="key">Key</Label>
+                  <Label htmlFor="key">{t("pages.parameterKey")}</Label>
                   <Input
                     id="key"
-                    placeholder="service/db/host"
+                    placeholder={t("pages.parameterKeyPlaceholder")}
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
                     disabled={!!editingParameter}
                     required
                   />
-                  {editingParameter && <p className="text-sm text-muted-foreground">Parameter keys cannot be changed.</p>}
+                  {editingParameter && <p className="text-sm text-muted-foreground">{t("pages.parameterKeyLocked")}</p>}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="value">Value</Label>
+                  <Label htmlFor="value">{t("pages.parameterValue")}</Label>
                   <Input id="value" value={value} onChange={(e) => setValue(e.target.value)} required />
                 </div>
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <DialogFooter>
                   <Button type="submit" disabled={upsert.isPending || !key.trim() || !value.trim()}>
-                    {upsert.isPending ? "Saving…" : editingParameter ? "Save changes" : "Save parameter"}
+                    {upsert.isPending ? t("pages.savingParameter") : editingParameter ? t("pages.saveChanges") : t("pages.saveParameter")}
                   </Button>
                 </DialogFooter>
               </form>
@@ -156,13 +156,13 @@ export function ParametersBrowserPage() {
         </div>
       </div>
       {error && !open && <p className="mb-4 text-sm text-destructive">{error}</p>}
-      <DataTable columns={columns} rows={parameters} rowKey={(p) => p.key} emptyMessage={isLoading ? "Loading..." : "No parameters yet"} />
+      <DataTable columns={columns} rows={parameters} rowKey={(p) => p.key} emptyMessage={isLoading ? t("pages.loadingParameters") : t("pages.noParameters")} />
       <ConfirmDialog
         open={!!pendingDelete}
         onOpenChange={(v) => !v && setPendingDelete(null)}
-        title={`Delete "${pendingDelete?.key}"?`}
-        description={error ?? "This cannot be undone."}
-        confirmLabel="Delete"
+        title={t("pages.deleteParameterTitle", { key: pendingDelete?.key })}
+        description={error ?? t("pages.deleteParameterDescription")}
+        confirmLabel={t("common.delete")}
         loading={remove.isPending}
         onConfirm={() => pendingDelete && remove.mutate(pendingDelete)}
       />
